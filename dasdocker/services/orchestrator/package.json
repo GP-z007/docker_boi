@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test tests/unit/test_auth_middleware.js tests/unit/test_input_validation.js tests/unit/test_state_machine.js tests/redteam/test_jwt_attacks.js"
+    "test": "node --require ./tests/disable-sidecars-env.js --test tests/integration/test_container_lifecycle.js tests/integration/test_session_api.js tests/redteam/test_input_attacks.js tests/redteam/test_jwt_attacks.js tests/redteam/test_resource_exhaustion.js tests/unit/test_auth_middleware.js tests/unit/test_input_validation.js tests/unit/test_state_machine.js"
   },
   "dependencies": {
     "fastify": "^5.2.2",

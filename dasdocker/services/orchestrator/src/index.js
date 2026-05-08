@@ -37,12 +37,30 @@ async function buildApp(config = {}) {
 
   const redis = new Redis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: true });
 
-  /** Explicit `lifecycleHooks:null` skips Docker provisioning even if `container-manager` exists later */
+  /** Explicit `lifecycleHooks:null` disables Docker provisioning (unit/integration harness safety). */
   let lifecycleHooks;
   if (Object.prototype.hasOwnProperty.call(config, 'lifecycleHooks')) {
     lifecycleHooks = config.lifecycleHooks;
   } else {
     lifecycleHooks = tryLoadDockerLifecycle(redis, fastify);
+  }
+
+  /** Runtime sidecars (Agent 08) — shut down BEFORE Redis quit */
+  /** @type {Array<() => Promise<void>>} */
+  const shutdownFns = [];
+
+  if (lifecycleHooks?.runSessionTeardown && process.env.DASDOCKER_KEYSPACE_EXPIRY === '1') {
+    const sub = redis.duplicate();
+    sub.on('error', () => {});
+    // eslint-disable-next-line import/no-dynamic-require, global-require
+    const { startRedisKeyspaceExpiryWatcher } = require('./self-destruct');
+    shutdownFns.push(await startRedisKeyspaceExpiryWatcher(sub, redis, lifecycleHooks, fastify.log));
+  }
+
+  if (lifecycleHooks?.runSessionTeardown && process.env.DASDOCKER_RESOURCE_ENFORCER !== '0') {
+    // eslint-disable-next-line import/no-dynamic-require, global-require
+    const { startResourceEnforcer } = require('./resource-enforcer');
+    shutdownFns.push(await startResourceEnforcer(redis, lifecycleHooks, fastify.log));
   }
 
   await fastify.register(healthRoutes, { prefix: '/api/v1', redis });
@@ -55,6 +73,11 @@ async function buildApp(config = {}) {
   });
 
   fastify.addHook('onClose', async (_inst, done) => {
+    for (const fn of shutdownFns.reverse()) {
+      try {
+        await fn();
+      } catch (_) {}
+    }
     redis.quit().then(() => done(), done);
   });
 
@@ -62,10 +85,7 @@ async function buildApp(config = {}) {
 }
 
 /**
- * Lazily attaches Docker lifecycle helpers when `./container-manager` ships (Agent 08).
- *
  * @param {import('fastify').FastifyInstance} fastify
- * @returns {Record<string, unknown>|null}
  */
 function tryLoadDockerLifecycle(redis, fastify) {
   try {
