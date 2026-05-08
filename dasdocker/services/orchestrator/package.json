@@ -1,0 +1,22 @@
+{
+  "name": "@dasdocker/orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dasDocker orchestrator API — Zero Trust lifecycle control plane",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/unit/test_auth_middleware.js tests/unit/test_input_validation.js tests/unit/test_state_machine.js tests/redteam/test_jwt_attacks.js"
+  },
+  "dependencies": {
+    "fastify": "^5.2.2",
+    "ioredis": "^5.4.2",
+    "jsonwebtoken": "^9.0.2",
+    "pino": "^9.6.0"
+  },
+  "devDependencies": {},
+  "license": "UNLICENSED"
+}
