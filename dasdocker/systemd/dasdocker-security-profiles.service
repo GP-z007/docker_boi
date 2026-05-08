@@ -1,0 +1,16 @@
+[Unit]
+Description=dasDocker seccomp and AppArmor profile deployment (Rule 1 — root-only policy paths)
+Documentation=file:///etc/dasdocker/security/seccomp-dasdocker.json
+# Before Docker so first container start sees loaded AppArmor name and seccomp path on disk.
+Before=docker.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# DASDOCKER_ROOT must match the synced tree (default /opt/dasdocker per Agent 18 service account home).
+Environment=DASDOCKER_ROOT=/opt/dasdocker
+ExecStart=/opt/dasdocker/scripts/deploy-security-profiles.sh
+
+[Install]
+WantedBy=multi-user.target
