@@ -1,0 +1,9 @@
+# dasDocker baseline — excludes controlled red-team fixtures (VT-RED-*) from repo-wide CI noise.
+title = "dasdocker baseline"
+
+[extend]
+useDefault = true
+
+[[allowlist]]
+description = "Intentionally fake AWS-material samples for VT-RED gitleaks negative coverage"
+paths = ["dasdocker/tests/infrastructure/fixtures/gitleaks-bad"]

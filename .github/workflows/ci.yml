@@ -1,0 +1,152 @@
+# Canonical GitHub Actions entrypoint for docker_boi (GitHub discovers only repo-root /.github/workflows).
+# Expected deliverable mirrors also place dasdocker/.github/workflows/ci.yml as a symlink to this file.
+
+name: dasdocker-ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DASDOCKER_PREFIX: dasdocker
+
+jobs:
+  lint-validate:
+    name: Lint & Static Config Validation
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Docker daemon JSON schema (jq)
+        run: |
+          jq '.' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
+          jq -e '.icc == false' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
+          jq -e '."live-restore" == true' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
+          jq -e '."storage-driver" == "overlay2"' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
+
+      - name: Hadolint (Dockerfile.stub)
+        run: |
+          docker run --rm -i docker.io/hadolint/hadolint:2.12.1-alpine < "${DASDOCKER_PREFIX}/docker/Dockerfile.stub"
+
+      - name: Shellcheck hardened scripts & infrastructure tests
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y shellcheck >/dev/null
+          mapfile -t scripts < <(find "${DASDOCKER_PREFIX}/scripts" -maxdepth 1 -type f -name '*.sh' | sort)
+          if [[ "${#scripts[@]}" -eq 0 ]]; then echo '::error::no shell scripts under scripts/'; exit 1; fi
+          shellcheck "${scripts[@]}"
+          shellcheck "${DASDOCKER_PREFIX}/tests/infrastructure/test_host_hardening.sh" \
+                     "${DASDOCKER_PREFIX}/tests/infrastructure/test_docker_config.sh" \
+                     "${DASDOCKER_PREFIX}/tests/infrastructure/test_ci_pipeline_negative.sh"
+
+      - name: sysctl drop-in newline guard
+        run: |
+          test -s "${DASDOCKER_PREFIX}/config/sysctl/99-dasdocker-hardening.conf"
+
+  security-scan:
+    name: Security Scanners (supply chain)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.53.0
+          trivy --version
+
+      - name: Install Semgrep CLI
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y pipx >/dev/null
+          pipx ensurepath
+          pipx install semgrep==1.93.2
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Filesystem CVE scan (CRITICAL blocker)
+        run: |
+          trivy fs --severity CRITICAL --exit-code 1 \
+            --skip-dirs "${DASDOCKER_PREFIX}/tests/infrastructure/fixtures/cve-fs" "${DASDOCKER_PREFIX}"
+
+      - name: GitLeaks secrets scan (repo baseline)
+        run: |
+          curl -sfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+          # Explicit allowpaths live in /.gitleaks.toml for deterministic positive fixtures elsewhere.
+          gitleaks detect --source . --config .gitleaks.toml --no-banner --redact --exit-code 1
+
+      - name: Semgrep SARIF-lite (block ERROR severity)
+        run: |
+          semgrep scan --error --severity ERROR --config p/docker "${DASDOCKER_PREFIX}/docker"
+          semgrep scan --error --severity ERROR --config p/bash "${DASDOCKER_PREFIX}/scripts"
+
+  infrastructure-tests:
+    name: Bash Infrastructure Acceptance
+    runs-on: ubuntu-22.04
+    needs: [lint-validate]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap scanner dependencies for negatives
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl tar shellcheck >/dev/null
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.53.0
+          curl -sfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+
+      - name: Run bash infrastructure suite
+        env:
+          CI: "true"
+        run: |
+          bash "${DASDOCKER_PREFIX}/tests/infrastructure/test_host_hardening.sh"
+          bash "${DASDOCKER_PREFIX}/tests/infrastructure/test_docker_config.sh"
+          bash "${DASDOCKER_PREFIX}/tests/infrastructure/test_ci_pipeline_negative.sh"
+
+  mandatory-review-gate:
+    name: Mandatory Squad A review gate
+    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
+    runs-on: ubuntu-22.04
+    needs: [security-scan, infrastructure-tests]
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      # postings land on PR issue thread — requires elevated PR scope justified for compliance reminder (Rule 3).
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `[Squad A gate]\nMerge to \`main\` requires Squad A acknowledgement via label \`squad-a-approved\`.\nThreat traceability: Rule 4 / STRIDE SEC-THREAT-001.`;
+            const prNumber = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });
+            const approved = context.payload.pull_request.labels.some(l => l.name === 'squad-a-approved');
+            if (!approved) {
+              core.setFailed('Blocked: add label squad-a-approved after Squad A review (branch protection complements this automation).');
+            }

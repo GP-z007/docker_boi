@@ -1,0 +1,28 @@
+[Unit]
+Description=dasDocker Orchestrator (stub — workload binary wired in Phase 2 orchestrator deploy)
+Documentation=file:///opt/dasdocker/docs/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+# Bounds: intentionally no socket exposure until orchestrator listens on loopback/private VIP only.
+
+[Service]
+Type=simple
+# Run as dedicated service identity — avoids root control-plane coupling (ADR-008 / ZTA least privilege).
+User=dasdocker-svc
+Group=dasdocker-svc
+# Shell is nologin; ExecStart remains a placeholder for Squad B (orchestrator) to replace with real binary path.
+ExecStart=/usr/bin/true
+Restart=on-failure
+RestartSec=5
+
+# Capability bounding — orchestrator gains only what Caps drop list in container-baseline allows for host-facing side.
+AmbientCapabilities=
+CapabilityBoundingSet=
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dasdocker/var
+
+[Install]
+WantedBy=multi-user.target
