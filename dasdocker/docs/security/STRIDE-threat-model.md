@@ -1,21 +1,55 @@
 # dasDocker STRIDE Threat Model
 
 **Document ID:** SEC-THREAT-001  
-**Version:** 1.0  
+**Version:** 1.1  
 **Phase:** 1 — Research & Architecture  
 **Owner:** Squad A — Security & Hardening (Agent 01)  
 **Classification:** Internal — Engineering  
 **Status:** Pending stakeholder sign-off (Phase Gate)
 
+## Master Engineering Rules (Binding on All Phases)
+
+These four rules apply to **every** agent, service, and deliverable. The STRIDE tables below map threats to controls and tests under these rules.
+
+### Rule 1 — Zero Trust Architecture (ZTA)
+
+- **Always verify, never trust.** No component implicitly trusts peers, callers, or the network.
+- **Least privilege** for every service, endpoint, and process: grant only the minimum identity, capability, and data scope required.
+- **All internal APIs require authentication** (caller identity + authorisation). Anonymous access is denied unless explicitly documented as a public, rate-limited surface—and even then responses are minimised.
+- **Network access is deny-by-default.** Egress and ingress are allowlisted by policy; new ports and peers require review.
+- **No secrets are ever hardcoded.** Secrets load from environment, KMS, or a vault; CI blocks accidental commit.
+- **Permissions must be justified in code comments** whenever code grants a capability, opens a port, widens CORS, adds a Docker flag, or elevates identity—state **why** it is necessary and **what** bounds the risk.
+
+### Rule 2 — Full-Spectrum Testing
+
+- Tests are written **before or alongside** production code. A deliverable that ships **only** docs or code **without** the mandated test layers is **not** a completed deliverable.
+- Every feature/deliverable **must** include:
+  - **Unit tests** — isolated logic and config validation;
+  - **Integration tests** — real system interaction (containers, Redis, APIs as applicable);
+  - **Red-team / negative tests** — adversarial and abuse cases aligned with STRIDE verification IDs (`VT-UNIT-*`, `VT-INT-*`, `VT-RED-*`).
+- Threat rows in this document **must** remain traceable to implemented tests before GA for the relevant component.
+
+### Rule 3 — GitHub Version Control
+
+- **Conventional Commits:** `type(scope): description` (e.g. `docs(security): clarify ZTA rules in STRIDE model`).
+- **Stage files individually and intentionally** — **never** use `git add .` in agent workflows (avoids accidental secret or artifact commits).
+- **Scoped feature branches** — each agent works on a dedicated branch (e.g. `docs/stride-threat-model`, `feat/orchestrator-session-api`); merge to `main` only via review.
+- Exact **copy-paste-ready** git commands are provided at the end of this document and in handoff reports where applicable.
+
+### Rule 4 — Inter-Agent Handoff Report
+
+- Each finishing agent produces `docs/handoffs/{agent-id}-handoff.md` containing:
+  - **(a)** What was built;
+  - **(b)** Exact **internal APIs**, **listening ports**, **repository file paths**, and **environment variables** exposed or mandated for downstream agents (use explicit `N/A` or `TBD` when not yet implemented);
+  - **(c)** Unresolved warnings, known limitations, and decisions requiring **Squad A** security review.
+
+---
+
 ## Executive Summary
 
 dasDocker is a web-based sandbox that executes **untrusted** code from GitHub repositories and ZIP archives inside hardened containers. This document is the **authoritative** security baseline for the project. Attack surfaces not enumerated here are **out of scope** for formal assurance until added by amendment.
 
-**Master engineering rules applied:**
-
-1. **Zero Trust Architecture (ZTA):** Every threat is tied to an attack surface and a ZTA-aligned control (least privilege, deny-by-default, explicit verification).
-2. **Full-spectrum testing:** Each threat lists a **Verification Test ID** (Unit, Integration, or Red-Team).
-3. **Governance:** Changes to this document require security review and stakeholder approval.
+**Alignment:** Threat tables tie each risk to ZTA controls (Rule 1) and verification test IDs (Rule 2). **Document changes** require security review and stakeholder approval before the Phase Gate.
 
 ---
 
@@ -331,16 +365,19 @@ Legacy algorithms (MD5, SHA-1, DES, 3DES, RC4) are **prohibited** for security-s
 
 Each PR author and reviewer **must** confirm:
 
+- [ ] **ZTA / Rule 1** — Internal APIs authenticate every caller; network policy is deny-by-default for new paths; least privilege enforced; sensitive permission changes include an in-code justification comment.
 - [ ] **No hardcoded secrets** — credentials only from env/KMS/Vault; scanners pass (git-secrets, trufflehog, or equivalent).
 - [ ] **Seccomp profile applied** to all sandbox containers (default Docker profile minimum; custom profile reviewed).
-- [ ] **Capabilities dropped** — Dockerfile and runtime use `--cap-drop ALL` plus explicit minimal add if required.
+- [ ] **Capabilities dropped** — Dockerfile and runtime use `--cap-drop ALL` plus explicit minimal add **with comment justification** if required.
 - [ ] **No Docker socket** mounted into user or untrusted containers; only orchestrator host can use Docker API.
 - [ ] **Network isolation verified** — no `--net=host` for workloads; egress policy matches S-08; tests or integration proof for new ports.
 - [ ] **Read-only root filesystem** where architecture specifies it; explicit writable paths only on RAM disk or tmpfs.
 - [ ] **Resource limits** — memory, CPU, pids, and storage quotas set for sandbox and ingestion jobs.
-- [ ] **Authorisation** — new API routes enforce ownership/tenant checks; no open-by-default endpoints.
+- [ ] **Authorisation** — new API routes enforce ownership/tenant checks; **no unauthenticated internal APIs** unless explicitly approved as public.
+- [ ] **Rule 2 — Tests** — Unit, Integration, and Red-team/negative tests exist for the change scope; deliverable incomplete otherwise.
 - [ ] **Structured logging** — no secret material in logs; PII/policy compliant scrubbing for Fluent Bit.
 - [ ] **Dependencies** — `npm audit` / `pip-audit` / OS CVE scan addressed or risk accepted in ticket.
+- [ ] **Rule 3 — Git** — Commits use Conventional Commits; no `git add .`; merges use intentional file staging.
 
 ---
 
@@ -352,15 +389,18 @@ Each PR author and reviewer **must** confirm:
 
 ---
 
-## Git Commands (Deliverable Governance)
+## Git Commands (Deliverable Governance — Rule 3)
 
-After stakeholder sign-off, initialise or update the repository and publish this document (adjust remote URL):
+Use a **scoped feature branch**; **stage each path explicitly** (never `git add .`). Conventional Commits only.
+
+**Greenfield `dasdocker` repository (adjust remote):**
 
 ```bash
-git init dasdocker 2>/dev/null || true
+git init dasdocker
 cd dasdocker
-git checkout -b main 2>/dev/null || git checkout main
+git checkout -b main
 mkdir -p docs/security docs/handoffs
+git checkout -b docs/stride-threat-model-phase1
 git add docs/security/STRIDE-threat-model.md
 git add docs/handoffs/agent-01-handoff.md
 git commit -m "docs(security): add STRIDE threat model for all 14 attack surfaces
@@ -370,14 +410,31 @@ git commit -m "docs(security): add STRIDE threat model for all 14 attack surface
 - Include attack tree for container escape and trust boundaries diagram
 - Define approved cryptographic standards (RS256, TLS 1.2+, AES-256-GCM)
 - Add mandatory security controls checklist for all agent PRs
+- Codify Master Engineering Rules 1-4 (ZTA, testing, Git, handoffs)
 
 Refs: Phase-1 Deliverable 1.1
 Phase-Gate: Stakeholder sign-off required"
+git checkout main
+git merge --no-ff docs/stride-threat-model-phase1 -m "merge: docs/stride-threat-model-phase1"
 git remote add origin https://github.com/YOUR_ORG/dasdocker.git
 git push -u origin main
 ```
 
-**Note:** If `dasdocker` already exists inside a monorepo, run `git add` and `git commit` from the repository root without `git init`.
+**Monorepo layout** (e.g. `dasdocker/` is a subdirectory of the project root — still use a feature branch from repo root):
+
+```bash
+cd /path/to/repo
+git checkout -b docs/stride-threat-model-phase1
+git add dasdocker/docs/security/STRIDE-threat-model.md
+git add dasdocker/docs/handoffs/agent-01-handoff.md
+git commit -m "docs(security): align STRIDE model with master engineering rules
+
+- Add Rules 1-4: ZTA, full-spectrum testing, intentional Git staging, handoff schema
+- Extend PR checklist: internal API auth, permission comment justification, test mandate
+
+Refs: Phase-1 Deliverable 1.1"
+git push -u origin docs/stride-threat-model-phase1
+```
 
 ---
 
@@ -386,6 +443,7 @@ git push -u origin main
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | Phase 1 | Agent 01 | Initial STRIDE model |
+| 1.1 | Phase 1 | Agent 01 | Master Engineering Rules 1-4; PR checklist + Git workflow (no `git add .`, feature branches) |
 
 **Stakeholder sign-off:** _________________________ **Date:** __________  
 

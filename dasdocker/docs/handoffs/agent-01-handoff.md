@@ -1,34 +1,70 @@
 # Agent 01 Handoff Report
 
-## What Was Built
+## (a) What Was Built
 
-The foundational **STRIDE threat model** for dasDocker was produced as the Phase 1, Deliverable **1.1** primary security artifact. It systematically decomposes risk across **14 attack surfaces** (S-01 through S-14), documents **44 distinct threats** (exceeding the minimum of 40), and for each threat specifies **risk rating**, **ZTA-aligned recommended control** (least privilege, deny-by-default), **Verification Test ID**, and **status**. The document adds an **attack tree for container escape** (14 leaf nodes), a **text trust boundaries diagram**, **approved cryptographic standards** binding all downstream implementations, and a **mandatory security controls checklist** for merge gates. **Critical** risks are explicitly mapped to named mitigations and test identifiers. Stakeholder **sign-off is required** before Phase 2 implementation begins.
+Phase 1 Deliverable **1.1**: the authoritative **STRIDE threat model** and binding **Master Engineering Rules (Rules 1–4)** in `docs/security/STRIDE-threat-model.md` (**v1.1**). The model documents **44** threats across **14** attack surfaces (S-01–S-14), each with STRIDE category, risk, ZTA control, verification test ID, and status; plus container **escape attack tree** (14 leaves), **trust boundaries** diagram, **approved cryptography**, and an expanded **pre-merge checklist** (internal API auth, permission comment justification, full-spectrum tests, intentional Git staging). This handoff satisfies **Rule 4** structure below.
 
-## Outputs for Downstream Agents
+---
 
-- **Threat model location:** `docs/security/STRIDE-threat-model.md` (repository path: `dasdocker/docs/security/STRIDE-threat-model.md` when the `dasdocker` folder is the repo root, or `dasdocker/...` under a monorepo root)
-- **Approved crypto standards (quick reference):** TLS **1.2+** (1.3 preferred), AEAD ciphers only; JWT signing **RS256** (PS256 acceptable); symmetric at rest **AES-256-GCM** (or ChaCha20-Poly1305); certificates **RSA ≥2048** or **ECDSA P-256+** / **Ed25519**; integrity **SHA-256** for commits/artifacts; passwords (if any) **Argon2id**; prohibited: MD5, SHA-1, DES/3DES, RC4 for security use cases
-- **Mandatory controls checklist (summary):** no hardcoded secrets; **seccomp** on sandboxes; **capabilities dropped** (`--cap-drop ALL` + minimal adds); **no Docker socket** in user containers; **network isolation** verified; read-only root + bounded writable paths; **resource limits**; **authorisation** on new APIs; **log scrubbing**; **dependency/CVE** posture addressed or accepted
-- **Surfaces requiring immediate engineering attention (Critical risks) — Threat IDs:**  
-  `T-S02-002`, `T-S03-002`, `T-S04-002`, `T-S05-001`, `T-S05-004`, `T-S06-001`, `T-S06-003`, `T-S07-001`, `T-S09-002`, `T-S11-002`, `T-S12-003`, `T-S13-003`, `T-S14-001`
+## (b) Downstream Contract — APIs, Ports, Paths, Environment Variables
 
-## Warnings & Open Items
+Phase 1 is **documentation-only**; no application binaries, listeners, or internal HTTP/gRPC APIs were implemented. Downstream agents must treat the following as the **exact contract for this deliverable**.
 
-- **OPEN attack-tree leaves** (require explicit design/ops ownership before GA): **C2**, **C3** (kernel races/CVE cadence), **D2** (overlay/supply chain), **F1** (device passthrough — v1 should disable). Documented in `STRIDE-threat-model.md` under *Attack Tree — Container Escape*.
-- **T-S05-001 / kernel CVEs:** Mitigation is cumulative (patching + policy); confirm organisational **patch SLA** meets product risk appetite.
-- **Cross-session observability (S-09, S-12):** Squad A should review **console fan-out** and **pcap isolation** designs before Phase 2 implementation locks APIs.
-- Any **Critical** item without **production-verified** integration/red-team test remains **governance debt** until VTs pass in the target environment.
+### Internal APIs (REST / RPC)
 
-## Required Reading
+| API / route | Method | Auth | Status |
+|-------------|--------|------|--------|
+| *None* | — | — | **N/A** — no orchestrator or service code shipped in this deliverable |
 
-All agents **MUST** read the following sections of `STRIDE-threat-model.md` before beginning Phase 2 work:
+Future agents SHALL define real routes in their own handoffs (`/api/v1/sessions`, health checks, etc.) with auth scheme and OpenAPI path when implemented.
 
-1. **Executive Summary** and **Scope & System Context** — roles of untrusted workloads and control plane
-2. **STRIDE Threat Tables by Attack Surface (S-01 through S-14)** — especially rows matching their squad’s components
-3. **Attack Tree — Container Escape** — shared understanding of BLOCKED vs OPEN paths
-4. **Trust Boundaries Diagram (Text)** — where authentication and validation must occur
-5. **Approved Cryptographic Standards** — non-negotiable algorithms and protocols
-6. **Mandatory Security Controls Checklist (Pre-merge to `main`)** — merge gate obligations
+### Listening ports (TCP/UDP)
+
+| Port | Protocol | Service | Status |
+|------|----------|---------|--------|
+| *None* | — | — | **N/A** — no processes bound |
+
+### Repository file paths (this deliverable)
+
+| Path | Purpose |
+|------|--------|
+| `dasdocker/docs/security/STRIDE-threat-model.md` | Primary threat model + Rules 1–4 + crypto + checklists + Git template |
+| `dasdocker/docs/handoffs/agent-01-handoff.md` | This handoff (Rule 4) |
+
+Paths are relative to the repository root that contains the `dasdocker/` directory (monorepo) or the `dasdocker` repo root (standalone).
+
+### Environment variables
+
+| Variable | Required | Purpose | Status |
+|----------|----------|---------|--------|
+| *None introduced by Agent 01* | — | — | **N/A** |
+
+Anticipated variables for **later phases** (not binding until architecture freeze): e.g. orchestrator `JWT_ISSUER`, `REDIS_URL`, `DOCKER_HOST` — document in Squad handoffs when implemented. **Do not hardcode secrets** (Rule 1).
+
+### Quick reference for other agents (from threat model)
+
+- **Approved crypto:** TLS 1.2+ (1.3 preferred), AEAD only; JWT **RS256**; at-rest **AES-256-GCM**; prohibit MD5/SHA-1/DES/RC4 for security uses — see full table in `STRIDE-threat-model.md`.
+- **Mandatory PR themes:** authenticated internal APIs, deny-by-default network, no hardcoded secrets, seccomp + cap-drop, no Docker socket in sandboxes, tests (Unit + Integration + Red-team) for code deliverables.
+
+---
+
+## (c) Warnings, Known Limitations, Squad A Review
+
+| Item | Severity | Notes |
+|------|----------|--------|
+| **OPEN attack-tree leaves** (C2, C3, D2, F1) | High | Kernel/supply-chain/device paths need owner + mitigation before GA; see STRIDE *Attack Tree — Container Escape*. |
+| **Kernel patch SLA (T-S05-001)** | High | Organisational patch cadence must match risk appetite. |
+| **Observability isolation (S-09, S-12)** | Medium | Console WebSocket fan-out and pcap tenancy need Squad A review before APIs are frozen. |
+| **Critical VTs not yet executed** | Medium | Verification IDs are specified; implementation and evidence are Phase 2+. |
+| **Stakeholder sign-off** | Gate | STRIDE document must be signed before Phase 2 coding proceeds. |
+
+**Decisions requiring Squad A review before implementation locks:** cross-session event routing design (S-12), Redis TTL authority model (S-11, S-14), Suricata placement and resource caps (S-09), Docker API authZ model (S-06).
+
+---
+
+## Required Reading (downstream)
+
+All agents **MUST** read in `STRIDE-threat-model.md`: **Master Engineering Rules (Rules 1–4)**, **Executive Summary**, **STRIDE tables S-01–S-14** (relevant rows), **Attack Tree — Container Escape**, **Trust Boundaries Diagram**, **Approved Cryptographic Standards**, **Mandatory Security Controls Checklist**, **Git Commands (Deliverable Governance — Rule 3)**.
 
 ---
 
