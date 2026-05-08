@@ -6,7 +6,7 @@ Phase 1 **security specification** (**Deliverable baseline for Agent 08 / Phase 
 
 1. **`config/security/container-baseline-profile.md`** — Master sandbox profile: capability matrix (41 capabilities, all **DROP**), seccomp strategy, AppArmor rule groups, cgroup v2 resource limits, mandatory `docker run` flag list, **≥10-item NEVER DO** table, **≥16-row verification matrix** (CTR-01–CTR-18 + optional negative test), and traceability to **STRIDE** Threat IDs (`T-S04-*`, `T-S05-*`, `T-S06-001`, `T-S08-001`).
 2. **`config/security/seccomp-dasdocker.json`** — Executable **OCI/Moby-format** seccomp profile: **`defaultAction: SCMP_ACT_ERRNO`**, **`defaultErrnoRet: 1`**, explicit allowlists for **Node.js / Python / Go / Java**-class workloads based on Moby **`v25.0.3`** default profile with **critical hardening**: removed unguaranteed allow rule for **`ptrace`**, **`process_vm_readv`**, **`process_vm_writev`** (**T-S04-002**).
-3. **`config/security/apparmor-dasdocker.profile`** — Loadable **`dasdocker`** AppArmor profile: denied **`/sys/**`**, **`/proc/sys/**`**, **`/proc/sysrq-trigger`**, host memory gadgets, **`docker.sock`** paths; capability denials aligned with **`CAP_DROP ALL`**; TCP/UDP only; **`deny network raw`**.
+3. **`config/security/apparmor-dasdocker.profile`** — Loadable AppArmor profile (runtime name **`dasdocker-container`**, path **`/etc/apparmor.d/dasdocker-container`**) denying **`/sys/**`**, **`/proc/sys/**`**, **`/proc/sysrq-trigger`**, host memory gadgets, **`docker.sock`** paths; capability denials aligned with **`CAP_DROP ALL`** semantics; TCP/UDP only; **`deny network raw`**.
 
 Agent 03 is listed in the squad dispatch memo as Network Isolation Engineer; this handoff deliberately names the **normative Docker network** **`dasdocker-isolated`** for CTR-08 alignment.
 
@@ -19,14 +19,14 @@ Agent 03 is listed in the squad dispatch memo as Network Isolation Engineer; thi
 | **Internal APIs** | **N/A** — specification phase only |
 | **Listening ports** | **N/A** — containers outbound policy is **`dasdocker-isolated`** bridge (**Agent 03** architecture); sandbox **must not** expose host ports (`--publish` only via orchestrator allowlist, out of Agent 02 scope) |
 | **Files Agent 08 must reference verbatim** | `dasdocker/config/security/container-baseline-profile.md`, `dasdocker/config/security/seccomp-dasdocker.json`, `dasdocker/config/security/apparmor-dasdocker.profile` |
-| **Host install path for AppArmor (ops)** | `/etc/apparmor.d/dasdocker` (recommended in spec) |
+| **Host install path for AppArmor (ops)** | `/etc/apparmor.d/dasdocker-container` (Phase 2 production path) |
 
 **Environment variables (normative placeholders for orchestrator)**
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `DASDOCKER_SECCOMP_JSON` | **Yes** (Phase 2) | Absolute host path to `seccomp-dasdocker.json` for `--security-opt seccomp=` |
-| `DASDOCKER_APPARMOR_PROFILE` | **Yes** where AppArmor enforced | **`dasdocker`** profile name |
+| `DASDOCKER_APPARMOR_PROFILE` | **Yes** where AppArmor enforced | **`dasdocker-container`** (host: `/etc/apparmor.d/dasdocker-container`; Phase 2 deploy) |
 
 **Threat model dependency:** `dasdocker/docs/security/STRIDE-threat-model.md`.
 

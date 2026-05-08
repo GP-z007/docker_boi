@@ -1,6 +1,7 @@
 # dasDocker sandbox AppArmor profile (Agent 02 — Container Hardening baseline)
-# Load: sudo apparmor_parser -r -W /absolute/path/to/apparmor-dasdocker.profile
-# Docker: --security-opt apparmor=dasdocker
+# Host install: /etc/apparmor.d/dasdocker-container (root:root 0644)
+# Load: sudo apparmor_parser -r -W /etc/apparmor.d/dasdocker-container
+# Docker: --security-opt apparmor=dasdocker-container
 #
 # STRIDE alignment: T-S04-002, T-S04-003, T-S05-004, T-S06-001, T-S08-001
 #
@@ -10,7 +11,7 @@ abi <abi/4.0>,
 
 #include <tunables/global>
 
-profile dasdocker flags=(attach_disconnected,mediate_deleted) {
+profile dasdocker-container flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/base>
   #include <abstractions/nameservice>
 
