@@ -1,0 +1,231 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`design system stubs (snapshots) > AlertFeed 1`] = `
+<section
+  aria-label="IDS alerts"
+  class="ds-stub"
+  data-component="AlertFeed"
+>
+  <span
+    class="ds-stub__title"
+  >
+    AlertFeed
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <ul
+      data-dense="false"
+      data-max-visible="5"
+    >
+      <li>
+        No IDS alerts
+      </li>
+    </ul>
+  </div>
+</section>
+`;
+
+exports[`design system stubs (snapshots) > Button 1`] = `
+<div
+  class="ds-stub"
+  data-component="Button"
+>
+  <span
+    class="ds-stub__title"
+  >
+    Button
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <button
+      aria-busy="true"
+      data-size="md"
+      data-variant="primary"
+      disabled=""
+      type="button"
+    >
+      Start
+    </button>
+  </div>
+</div>
+`;
+
+exports[`design system stubs (snapshots) > ConsolePanel 1`] = `
+<div
+  class="ds-stub"
+  data-component="ConsolePanel"
+  style="font: var(--font-console);"
+>
+  <span
+    class="ds-stub__title"
+  >
+    ConsolePanel
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <pre
+      aria-disabled="false"
+      data-line-count="0"
+    >
+      $ 
+    </pre>
+  </div>
+</div>
+`;
+
+exports[`design system stubs (snapshots) > CountdownTimer 1`] = `
+<div
+  class="ds-stub"
+  data-component="CountdownTimer"
+>
+  <span
+    class="ds-stub__title"
+  >
+    CountdownTimer
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <span
+      data-critical-threshold-sec=""
+      data-ends-at="2099-01-01T00:00:00Z"
+      data-show-seconds="true"
+      role="timer"
+    >
+      --:--
+    </span>
+  </div>
+</div>
+`;
+
+exports[`design system stubs (snapshots) > NetworkTimeline 1`] = `
+<div
+  class="ds-stub"
+  data-component="NetworkTimeline"
+  role="list"
+>
+  <span
+    class="ds-stub__title"
+  >
+    NetworkTimeline
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <div
+      data-event-count="0"
+      data-timezone="local"
+    />
+  </div>
+</div>
+`;
+
+exports[`design system stubs (snapshots) > ProcessTree 1`] = `
+<div
+  class="ds-stub"
+  data-component="ProcessTree"
+  role="tree"
+>
+  <span
+    class="ds-stub__title"
+  >
+    ProcessTree
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <div
+      data-expand-depth="1"
+      data-node-count="0"
+    />
+  </div>
+</div>
+`;
+
+exports[`design system stubs (snapshots) > ProxiedWebViewPanel 1`] = `
+<div
+  class="ds-stub"
+  data-component="ProxiedWebViewPanel"
+>
+  <span
+    class="ds-stub__title"
+  >
+    ProxiedWebViewPanel
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <div
+      data-sandbox=""
+      data-src=""
+    >
+      Untrusted sandbox viewport — CSP \`frame-src\` open item for Agent 16.
+    </div>
+    <span
+      class="visually-hidden"
+    >
+      Proxied sandbox
+    </span>
+  </div>
+</div>
+`;
+
+exports[`design system stubs (snapshots) > StatusBadge 1`] = `
+<div
+  class="ds-stub"
+  data-component="StatusBadge"
+>
+  <span
+    class="ds-stub__title"
+  >
+    StatusBadge
+  </span>
+  <div
+    class="ds-stub__body"
+  >
+    <span
+      aria-hidden="true"
+      class="ds-skeleton"
+    />
+    <span
+      data-alert-level="none"
+      data-compact="false"
+      data-status="live"
+      role="status"
+    >
+      live
+    </span>
+  </div>
+</div>
+`;
