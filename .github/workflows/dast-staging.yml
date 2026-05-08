@@ -1,0 +1,24 @@
+# DAST hook scaffold — staging URL must come from Vault/Actions secrets at runtime (Rule 1).
+name: dast-staging-dynamic
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'HTTPS base URL for the staging Operator UI behind auth'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline-reminder:
+    name: Prepare OWASP ZAP baseline invocation (manual follow-up)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Document invocation (runner does not crawl without creds bucket)
+        run: |
+          echo "::notice::Mount OWASP ZAP stable image against '${{ github.event.inputs.target_url }}'"
+          echo "Example: docker run --rm ghcr.io/zaproxy/zap-stable zap-baseline.py -t \"$TARGET\"" \
+               "Configure auth headers/secrets ONLY via ephemeral CI secret stores — never plaintext in workflow."
