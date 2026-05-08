@@ -1,0 +1,21 @@
+# Example Vault server config — copy to /opt/dasdocker/vault/config/vault.hcl after TLS material exists.
+# ZTA: TLS listener only; single-node file backend for Phase 2 (HA migration via ADR follow-up).
+
+ui            = false
+disable_mlock = true
+
+storage "file" {
+  path = "/opt/dasdocker/vault/data"
+}
+
+listener "tcp" {
+  address       = "127.0.0.1:8200"
+  tls_cert_file = "/opt/dasdocker/vault/tls/vault-cert.pem"
+  tls_key_file  = "/opt/dasdocker/vault/tls/vault-key.pem"
+}
+
+api_addr     = "https://127.0.0.1:8200"
+cluster_addr = "https://127.0.0.1:8201"
+
+# Auto-unseal: NOT ENABLED by default — operator uses Shamir manual unseal (see Agent 04 handoff).
+# Alternate: Transit auto-unseal, Cloud KMS seal — reduces operational risk of key loss vs availability trade-off.
