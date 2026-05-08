@@ -95,6 +95,151 @@ jobs:
           semgrep scan --error --severity ERROR --config p/docker "${DASDOCKER_PREFIX}/docker"
           semgrep scan --error --severity ERROR --config p/bash "${DASDOCKER_PREFIX}/scripts"
 
+  sast-enhanced:
+    name: SAST Enhanced (njsscan — Node orchestration surface)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    needs: []
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install njsscan
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y python3-pip >/dev/null
+          sudo pip3 install --no-cache-dir njsscan
+          command -v njsscan && njsscan --help >/dev/null
+
+      - name: njsscan services/orchestrator (Node SAST baseline)
+        run: |
+          if [[ -d "${DASDOCKER_PREFIX}/services/orchestrator/src" ]]; then
+            njsscan "${DASDOCKER_PREFIX}/services/orchestrator/src"
+          else
+            echo "::notice::${DASDOCKER_PREFIX}/services/orchestrator/src missing — njsscan skipped until orchestrator scaffold merges"
+          fi
+
+  frontend-lint:
+    name: Frontend lint & npm audit & unsafe DOM patterns
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Frontend package guard
+        id: gate
+        run: |
+          if [[ -f "${DASDOCKER_PREFIX}/services/frontend/package.json" ]]; then
+            echo "has_frontend=true" >>"${GITHUB_OUTPUT}"
+          else
+            echo "has_frontend=false" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.has_frontend == 'true'
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ env.DASDOCKER_PREFIX }}/services/frontend/package-lock.json
+
+      - name: npm ci frontend
+        if: steps.gate.outputs.has_frontend == 'true'
+        working-directory: ${{ env.DASDOCKER_PREFIX }}/services/frontend
+        run: npm ci
+
+      - name: ESLint (eslint-plugin-security)
+        if: steps.gate.outputs.has_frontend == 'true'
+        working-directory: ${{ env.DASDOCKER_PREFIX }}/services/frontend
+        run: npm run lint
+
+      - name: npm audit (HIGH+)
+        if: steps.gate.outputs.has_frontend == 'true'
+        working-directory: ${{ env.DASDOCKER_PREFIX }}/services/frontend
+        run: npm audit --audit-level=high
+
+      - name: Block eval / innerHTML in application src (Rule 2 negative surface)
+        if: steps.gate.outputs.has_frontend == 'true'
+        working-directory: ${{ env.DASDOCKER_PREFIX }}/services/frontend
+        run: |
+          set -euo pipefail
+          if grep -RInE '(^|[^A-Za-z0-9_])(eval\s*\(|new Function\s*\()' src \
+              --include='*.js' --include='*.jsx' --include='*.ts' --include='*.tsx' \
+              --exclude-dir=__tests__ 2>/dev/null; then
+            echo '::error::Unsafe dynamic execution primitive detected'
+            exit 1
+          fi
+          if grep -RInE '(dangerouslySetInnerHTML|\\.(innerHTML)\\s*=)' src \
+              --include='*.jsx' --include='*.tsx' --include='*.js' \
+              --exclude-dir=__tests__ 2>/dev/null; then
+            echo '::error::Raw HTML sinks detected — sanitize or justify with Squad A waiver'
+            exit 1
+          fi
+
+  docker-build-verify:
+    name: Build orchestrator image + Trivy image scan
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Orchestrator Dockerfile guard
+        id: dk
+        run: |
+          if [[ -f "${DASDOCKER_PREFIX}/services/orchestrator/Dockerfile" ]]; then
+            echo "has_df=true" >>"${GITHUB_OUTPUT}"
+          else
+            echo "has_df=false" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.dk.outputs.has_df == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build orchestrator (local tag)
+        if: steps.dk.outputs.has_df == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.DASDOCKER_PREFIX }}/services/orchestrator
+          file: ${{ env.DASDOCKER_PREFIX }}/services/orchestrator/Dockerfile
+          push: false
+          load: true
+          tags: dasdocker-orchestrator:ci
+
+      - name: Install Trivy CLI
+        if: steps.dk.outputs.has_df == 'true'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.53.0
+          trivy --version
+
+      - name: Trivy scan built image (CRITICAL blocker)
+        if: steps.dk.outputs.has_df == 'true'
+        run: |
+          trivy image --severity CRITICAL --exit-code 1 dasdocker-orchestrator:ci
+
+      - name: Notify skip (no Dockerfile on branch)
+        if: steps.dk.outputs.has_df != 'true'
+        run: |
+          echo "::notice::orchestrator Dockerfile absent — skipping image build/Trivy (merge orchestrator scaffold to enable)"
+
+  dependency-review:
+    name: Dependency Review (block new Critical CVE deps)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+
   infrastructure-tests:
     name: Bash Infrastructure Acceptance
     runs-on: ubuntu-22.04
@@ -126,7 +271,14 @@ jobs:
     name: Mandatory Squad A review gate
     if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
     runs-on: ubuntu-22.04
-    needs: [security-scan, infrastructure-tests]
+    needs:
+      [
+        security-scan,
+        infrastructure-tests,
+        frontend-lint,
+        sast-enhanced,
+        docker-build-verify,
+      ]
     permissions:
       contents: read
       pull-requests: write

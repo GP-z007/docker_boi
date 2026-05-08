@@ -1,0 +1,73 @@
+# PR-only compliance gate (Agent 19). Complements branch protection + root ci.yml scanners.
+name: pr-security-gate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  pr-security-compliance:
+    name: PR security checklist + deliverable reference + label gate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- dasdocker-pr-security-gate-v1 -->';
+            const pr = context.payload.pull_request;
+            const prNumber = pr.number;
+            const body = pr.body || '';
+
+            let failed = false;
+            const deliverableOk =
+              /Refs:\s*Phase-\d+[\s\S]*Deliverable\s+[\d.]+/im.test(body) ||
+              /Deliverable\s+[\d.]+/i.test(body);
+            if (!deliverableOk) {
+              core.error(
+                'PR description must reference a Deliverable ID (example: \"Refs: Phase-2 Deliverable 2.7\").',
+              );
+              failed = true;
+            }
+
+            const hasLabel = pr.labels.some((l) => l.name === 'security-approved');
+            if (!hasLabel) {
+              core.error('Blocked: add label `security-approved` after Squad A security review.');
+              failed = true;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              per_page: 100,
+            });
+
+            if (!comments.some((c) => (c.body || '').includes(marker))) {
+              const checklist = [
+                marker,
+                '### Agent 01 — Mandatory Security Controls (PR reminder)',
+                '- [ ] **ZTA / least privilege** verified for touched surfaces.',
+                '- [ ] **No hardcoded secrets** (CI scanners + Squad review).',
+                '- [ ] **STRIDE linkage** cited where threat-relevant behaviour changes.',
+                '- [ ] **Tests** span unit/integration/red-team expectations per Squad plan.',
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: checklist,
+              });
+            }
+
+            if (failed) {
+              core.setFailed('PR security gate failed — fix description and/or labels above.');
+            }
