@@ -8,9 +8,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test ../../tests/ingestion/*.js ../../tests/runtime-detection/*.js"
+    "test": "node --test ../../tests/ingestion/*.js ../../tests/runtime-detection/*.js ../../tests/lifecycle/test_*.js"
   },
   "dependencies": {
-    "adm-zip": "^0.5.17"
+    "adm-zip": "^0.5.17",
+    "ioredis": "^5.10.1"
   }
 }
