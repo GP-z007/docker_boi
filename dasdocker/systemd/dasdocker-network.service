@@ -1,0 +1,21 @@
+[Unit]
+Description=dasDocker iptables sandbox policy (DOCKER-USER / DASDOCKER-FORWARD, NR-*)
+Documentation=file:///etc/dasdocker/network/iptables.rules.applied.snippet
+
+# Ordering: tighten filter/nat snippets before Docker programs its forwarding paths (T-S08-001).
+After=network-online.target
+Before=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+
+# WAN + host IPs may be seeded by `setup-network.sh write-env` onto disk.
+EnvironmentFile=-/etc/dasdocker/network/network.env
+
+# Apply idempotent iptables rules (never full-table restore — preserves Docker-managed tables).
+ExecStart=/bin/bash /opt/dasdocker/scripts/setup-network.sh apply-iptables
+
+[Install]
+WantedBy=multi-user.target

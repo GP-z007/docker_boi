@@ -1,0 +1,19 @@
+[Unit]
+Description=HashiCorp Vault (dasDocker secret plane — ADR D-006)
+Documentation=https://developer.hashicorp.com/vault/docs/configuration
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=vault
+Group=vault
+
+ExecStart=/usr/bin/vault server -config=/opt/dasdocker/vault/config/vault.hcl
+ExecReload=/usr/bin/kill --signal HUP $MAINPID
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

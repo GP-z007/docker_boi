@@ -1,0 +1,20 @@
+[Unit]
+Description=dasDocker DNS sinkhole (172.31.0.1:53 only — T-S08-002)
+Documentation=file:///etc/dasdocker/network/dnsmasq-dasdocker.conf
+After=docker.service network-online.target
+Wants=docker.service
+
+[Service]
+Type=simple
+RuntimeDirectory=dasdocker
+ExecStartPre=/bin/mkdir -p /var/log/dasdocker
+ExecStartPre=/bin/chown root:root /var/log/dasdocker
+# Foreground dnsmasq; bind only 172.31.0.1 (present after dasdocker-isolated exists).
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/dasdocker/network/dnsmasq-dasdocker.conf
+StandardOutput=append:/var/log/dasdocker/dns-queries.log
+StandardError=append:/var/log/dasdocker/dns-queries.log
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

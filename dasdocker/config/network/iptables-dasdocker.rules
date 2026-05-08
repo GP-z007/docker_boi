@@ -1,0 +1,45 @@
+# dasDocker iptables policy (NET-ISO-ARCH-001) — audit / unit-parse source.
+# Applied by scripts/setup-network.sh via per-rule -F chain + -A (never full iptables-restore).
+# Tokens @WAN_IF@ (nat POSTROUTING) and @HOST_MGMT_IP@ (e.g. 192.168.1.100/32) substituted at deploy.
+
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:DASDOCKER-INPUT - [0:0]
+:DOCKER-USER - [0:0]
+:DASDOCKER-FORWARD - [0:0]
+-A INPUT -j DASDOCKER-INPUT
+-A DASDOCKER-INPUT -s 127.0.0.0/8 ! -i lo -m comment --comment "NR-IN-SPOOF T-S08-001 non-lo loopback src" -j DROP
+-A DASDOCKER-INPUT -s 0.0.0.0/8 -m comment --comment "NR-IN-SPOOF T-S08-001 invalid src" -j DROP
+-A DASDOCKER-INPUT -s 172.31.0.0/16 -d 172.31.0.1 -p udp -m udp --dport 53 -m comment --comment "NR-002 T-S08-002 DNS UDP sinkhole" -j ACCEPT
+-A DASDOCKER-INPUT -s 172.31.0.0/16 -d 172.31.0.1 -p tcp -m tcp --dport 53 -m comment --comment "NR-002 T-S08-002 DNS TCP sinkhole" -j ACCEPT
+-A DASDOCKER-INPUT -s 172.31.0.0/16 -d 172.31.0.1 -m comment --comment "NR-003 T-S06-001 drop non-DNS to GW IP" -j DROP
+-A DASDOCKER-INPUT -j RETURN
+-A DOCKER-USER -j DASDOCKER-FORWARD
+-A DOCKER-USER -j RETURN
+-A DASDOCKER-FORWARD ! -s 172.31.0.0/16 -j RETURN
+-A DASDOCKER-FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "NR-012 T-S08-001 return path" -j ACCEPT
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 172.31.0.1 -p udp -m udp --dport 53 -m comment --comment "NR-001 T-S08-002 DNS UDP FORWARD belt" -j ACCEPT
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 172.31.0.1 -p tcp -m tcp --dport 53 -m comment --comment "NR-001 T-S08-002 DNS TCP FORWARD belt" -j ACCEPT
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -m iprange --dst-range 172.31.0.2-172.31.255.255 -m comment --comment "NR-014 T-S08-001 ICC" -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 10.0.0.0/8 -m comment --comment "NR-004 T-S08-001 RFC1918-10" -j LOG --log-prefix "DASDOCKER_LAN_BLOCK: "
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 10.0.0.0/8 -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -m iprange --dst-range 172.16.0.0-172.30.255.255 -m comment --comment "NR-005 foreign 172" -j LOG --log-prefix "DASDOCKER_LAN_BLOCK: "
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -m iprange --dst-range 172.16.0.0-172.30.255.255 -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 192.168.0.0/16 -m comment --comment "NR-006 RFC1918-192" -j LOG --log-prefix "DASDOCKER_LAN_BLOCK: "
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 192.168.0.0/16 -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 169.254.0.0/16 -m comment --comment "NR-007 link-local" -j LOG --log-prefix "DASDOCKER_LAN_BLOCK: "
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 169.254.0.0/16 -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 224.0.0.0/4 -m comment --comment "NR-008 multicast" -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d @HOST_MGMT_IP@ -m comment --comment "NR-010 host mgmt" -j LOG --log-prefix "DASDOCKER_HOST_BLOCK: "
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d @HOST_MGMT_IP@ -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -p udp -m conntrack --ctstate NEW ! -d 172.31.0.1 -m comment --comment "NR-018 DNS tunnel UDP" -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -p icmp -m comment --comment "NR-016 ICMP drop" -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -p tcp -m multiport --dports 80,443 -m comment --comment "NR-009 HTTPS HTTP" -j ACCEPT
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -p tcp -m conntrack --ctstate NEW -m comment --comment "NR-015 other TCP new drop" -j DROP
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -m comment --comment "default-deny sandbox T-S08-001" -j DROP
+COMMIT
+*nat
+-A POSTROUTING -s 172.31.0.0/16 ! -d 172.31.0.0/16 -o @WAN_IF@ -m comment --comment "NR-013 MASQUERADE T-S08-001" -j MASQUERADE
+COMMIT
