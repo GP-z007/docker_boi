@@ -1,0 +1,12 @@
+# Installed as /etc/logrotate.d/dasdocker-dns — 7-day retention per Phase 2 network deliverable.
+
+/var/log/dasdocker/dns-queries.log {
+  daily
+  rotate 7
+  compress
+  delaycompress
+  missingok
+  notifempty
+  copytruncate
+  dateext
+}
