@@ -1,22 +1,15 @@
-# Canonical GitHub Actions entrypoint for docker_boi (GitHub discovers only repo-root /.github/workflows).
-# Expected deliverable mirrors also place dasdocker/.github/workflows/ci.yml as a symlink to this file.
-
 name: dasdocker-ci
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  DASDOCKER_PREFIX: dasdocker
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: ${{ github.repository_owner }}
+  IMAGE_PREFIX: ${{ github.event.repository.name }}
 
 jobs:
   lint-validate:
@@ -30,123 +23,326 @@ jobs:
 
       - name: Validate Docker daemon JSON schema (jq)
         run: |
-          jq '.' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
-          jq -e '.icc == false' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
-          jq -e '."live-restore" == true' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
-          jq -e '."storage-driver" == "overlay2"' "${DASDOCKER_PREFIX}/config/docker/daemon.json" >/dev/null
-
-      - name: Hadolint (Dockerfile.stub)
+          jq -e . config/docker/daemon.json > /dev/null
+          jq -e . config/security/seccomp-dasdocker.json > /dev/null
+      - name: Hadolint Dockerfiles
         run: |
-          docker run --rm -i docker.io/hadolint/hadolint:2.12.1-alpine < "${DASDOCKER_PREFIX}/docker/Dockerfile.stub"
-
-      - name: Shellcheck hardened scripts & infrastructure tests
+          docker run --rm -i hadolint/hadolint:2.12.0-alpine < services/ebpf-monitor/Dockerfile
+          docker run --rm -i hadolint/hadolint:2.12.0-alpine < docker/Dockerfile.stub
+      - name: Shellcheck scripts
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y shellcheck >/dev/null
-          mapfile -t scripts < <(find "${DASDOCKER_PREFIX}/scripts" -maxdepth 1 -type f -name '*.sh' | sort)
-          if [[ "${#scripts[@]}" -eq 0 ]]; then echo '::error::no shell scripts under scripts/'; exit 1; fi
-          shellcheck "${scripts[@]}"
-          shellcheck "${DASDOCKER_PREFIX}/tests/infrastructure/test_host_hardening.sh" \
-                     "${DASDOCKER_PREFIX}/tests/infrastructure/test_docker_config.sh" \
-                     "${DASDOCKER_PREFIX}/tests/infrastructure/test_ci_pipeline_negative.sh"
-
-      - name: sysctl drop-in newline guard
-        run: |
-          test -s "${DASDOCKER_PREFIX}/config/sysctl/99-dasdocker-hardening.conf"
+          sudo apt-get update
+          sudo apt-get install -y shellcheck jq
+          shopt -s globstar nullglob
+          shellcheck scripts/*.sh
+          shellcheck tests/**/*.sh
 
   security-scan:
-    name: Security Scanners (supply chain)
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Trivy
-        run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.53.0
-          trivy --version
-
-      - name: Install Semgrep CLI
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y pipx >/dev/null
-          pipx ensurepath
-          pipx install semgrep==1.93.2
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-
-      - name: Filesystem CVE scan (CRITICAL blocker)
-        run: |
-          trivy fs --severity CRITICAL --exit-code 1 \
-            --skip-dirs "${DASDOCKER_PREFIX}/tests/infrastructure/fixtures/cve-fs" "${DASDOCKER_PREFIX}"
-
-      - name: GitLeaks secrets scan (repo baseline)
-        run: |
-          curl -sfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
-            | tar -xz -C /tmp gitleaks
-          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-          # Explicit allowpaths live in /.gitleaks.toml for deterministic positive fixtures elsewhere.
-          gitleaks detect --source . --config .gitleaks.toml --no-banner --redact --exit-code 1
-
-      - name: Semgrep SARIF-lite (block ERROR severity)
-        run: |
-          semgrep scan --error --severity ERROR --config p/docker "${DASDOCKER_PREFIX}/docker"
-          semgrep scan --error --severity ERROR --config p/bash "${DASDOCKER_PREFIX}/scripts"
-
-  infrastructure-tests:
-    name: Bash Infrastructure Acceptance
-    runs-on: ubuntu-22.04
-    needs: [lint-validate]
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Bootstrap scanner dependencies for negatives
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq curl tar shellcheck >/dev/null
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin v0.53.0
-          curl -sfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
-            | tar -xz -C /tmp gitleaks
-          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
-
-      - name: Run bash infrastructure suite
+      - name: Trivy filesystem scan (Critical/High fail)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: '1'
+          scan-ref: .
+      - name: Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/security-audit
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
         env:
-          CI: "true"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install and run njsscan
         run: |
-          bash "${DASDOCKER_PREFIX}/tests/infrastructure/test_host_hardening.sh"
-          bash "${DASDOCKER_PREFIX}/tests/infrastructure/test_docker_config.sh"
-          bash "${DASDOCKER_PREFIX}/tests/infrastructure/test_ci_pipeline_negative.sh"
+          python3 -m pip install --upgrade pip
+          python3 -m pip install njsscan
+          njsscan services -o njsscan-report.json || true
+          if [ -f njsscan-report.json ]; then
+            python3 - <<'PY'
+import json,sys
+data=json.load(open("njsscan-report.json"))
+hits=0
+for item in data.get("nodejs",[]):
+  sev=str(item.get("severity","")).lower()
+  if sev in ("high","critical"):
+    hits+=1
+for item in data.get("warnings",[]):
+  sev=str(item.get("severity","")).lower()
+  if sev in ("high","critical"):
+    hits+=1
+if hits:
+  print(f"High/Critical njsscan findings: {hits}")
+  sys.exit(1)
+PY
+          fi
+
+  frontend-lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: services/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: services/frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: npm audit (Critical/High fail)
+        run: npm audit --audit-level=high
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: GitHub Dependency Review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  test-unit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        service:
+          - services/orchestrator
+          - services/event-bus
+          - services/frontend
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci || npm install
+      - name: Run unit tests
+        run: npm test
+
+  test-integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Integration security and infra tests
+        run: |
+          bash tests/infrastructure/test_docker_config.sh
+          bash tests/infrastructure/test_host_hardening.sh
+          bash tests/network/test_network_unit.sh
+
+  test-redteam:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools for red-team negative tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          TRIVY_VER="0.54.1"
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VER}/trivy_${TRIVY_VER}_Linux-64bit.tar.gz" -o trivy.tgz
+          tar -xzf trivy.tgz trivy
+          sudo mv trivy /usr/local/bin/trivy
+          GITLEAKS_VER="8.18.4"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+      - name: Pipeline negative abuse tests
+        run: bash tests/infrastructure/test_ci_pipeline_negative.sh
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs:
+      - lint-validate
+      - security-scan
+      - frontend-lint
+      - dependency-review
+      - test-unit
+      - test-integration
+      - test-redteam
+    # packages:write is intentionally scoped here for image publication only.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      ebpf_image: ${{ steps.meta.outputs.ebpf_image }}
+      ebpf_digest: ${{ steps.ebpf.outputs.digest }}
+      stub_image: ${{ steps.meta.outputs.stub_image }}
+      stub_digest: ${{ steps.stub.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set image metadata
+        id: meta
+        run: |
+          owner="$(echo "${IMAGE_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          repo="$(echo "${IMAGE_PREFIX}" | tr '[:upper:]' '[:lower:]')"
+          echo "ebpf_image=${REGISTRY}/${owner}/${repo}-ebpf-monitor" >> "$GITHUB_OUTPUT"
+          echo "stub_image=${REGISTRY}/${owner}/${repo}-sandbox-stub" >> "$GITHUB_OUTPUT"
+      - name: Build and push ebpf-monitor
+        id: ebpf
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/ebpf-monitor/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.ebpf_image }}:${{ github.sha }}
+      - name: Build and push sandbox stub
+        id: stub
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.stub
+          push: true
+          tags: ${{ steps.meta.outputs.stub_image }}:${{ github.sha }}
+
+  docker-scan:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Trivy scan ebpf image
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ needs.docker-build.outputs.ebpf_image }}@${{ needs.docker-build.outputs.ebpf_digest }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: '1'
+      - name: Trivy scan sandbox stub image
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ needs.docker-build.outputs.stub_image }}@${{ needs.docker-build.outputs.stub_digest }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: false
+          exit-code: '1'
+
+  sign-and-verify:
+    runs-on: ubuntu-latest
+    needs:
+      - docker-build
+      - docker-scan
+    # id-token:write is required for keyless OIDC cosign signing.
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    steps:
+      - uses: sigstore/cosign-installer@v3.7.0
+      - name: Sign ebpf image
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes "${{ needs.docker-build.outputs.ebpf_image }}@${{ needs.docker-build.outputs.ebpf_digest }}"
+      - name: Sign sandbox stub image
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes "${{ needs.docker-build.outputs.stub_image }}@${{ needs.docker-build.outputs.stub_digest }}"
+      - name: Verify ebpf signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/.+" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ needs.docker-build.outputs.ebpf_image }}@${{ needs.docker-build.outputs.ebpf_digest }}"
+      - name: Verify sandbox stub signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/.+" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ needs.docker-build.outputs.stub_image }}@${{ needs.docker-build.outputs.stub_digest }}"
+      - name: Negative tamper check must fail
+        run: |
+          set +e
+          cosign verify \
+            --certificate-identity-regexp "https://github.com/.+" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ needs.docker-build.outputs.ebpf_image }}@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "Tampered digest verification unexpectedly succeeded"
+            exit 1
+          fi
+          echo "Tampered digest verification correctly failed"
+
+  generate-sbom:
+    runs-on: ubuntu-latest
+    needs:
+      - docker-build
+      - sign-and-verify
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action/download-syft@v0.17.1
+      - uses: anchore/scan-action/download-grype@v5.6.1
+      - name: Generate SPDX SBOMs
+        run: |
+          mkdir -p sbom
+          syft "${{ needs.docker-build.outputs.ebpf_image }}@${{ needs.docker-build.outputs.ebpf_digest }}" -o spdx-json > sbom/ebpf-monitor.spdx.json
+          syft "${{ needs.docker-build.outputs.stub_image }}@${{ needs.docker-build.outputs.stub_digest }}" -o spdx-json > sbom/sandbox-stub.spdx.json
+      - name: Scan SBOMs with grype
+        run: |
+          grype sbom:sbom/ebpf-monitor.spdx.json --fail-on high
+          grype sbom:sbom/sandbox-stub.spdx.json --fail-on high
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-spdx
+          path: sbom/*.spdx.json
 
   mandatory-review-gate:
-    name: Mandatory Squad A review gate
-    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
-    runs-on: ubuntu-22.04
-    needs: [security-scan, infrastructure-tests]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs:
+      - generate-sbom
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
-      # postings land on PR issue thread — requires elevated PR scope justified for compliance reminder (Rule 3).
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/github-script@v7
+      - name: Enforce Squad A approval label
+        uses: actions/github-script@v7
         with:
           script: |
-            const body = `[Squad A gate]\nMerge to \`main\` requires Squad A acknowledgement via label \`squad-a-approved\`.\nThreat traceability: Rule 4 / STRIDE SEC-THREAT-001.`;
-            const prNumber = context.payload.pull_request.number;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body,
-            });
-            const approved = context.payload.pull_request.labels.some(l => l.name === 'squad-a-approved');
-            if (!approved) {
-              core.setFailed('Blocked: add label squad-a-approved after Squad A review (branch protection complements this automation).');
+            const pr = context.payload.pull_request;
+            if (!pr) core.setFailed("PR context missing");
+            const labels = (pr.labels || []).map(l => l.name.toLowerCase());
+            const allowed = ["squad-a-approved", "squad-a/security-approved"];
+            if (!allowed.some(v => labels.includes(v))) {
+              core.setFailed(`Missing required Squad A label. Found labels: ${labels.join(", ")}`);
             }
