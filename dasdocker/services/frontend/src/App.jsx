@@ -1,28 +1,9 @@
 import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { isUuidSessionId } from './lib/uuid.js';
 import SessionWorkspace from './pages/SessionWorkspace.jsx';
-
-function LandingPage() {
-  return (
-    <main className="ds-stub">
-      <h1 style={{ font: 'var(--font-heading)', marginBottom: 'var(--space-4)' }}>Landing / Submit</h1>
-      <p style={{ color: 'var(--color-text-muted)' }}>Start a session (orchestrator wiring lands in later squads).</p>
-      <nav style={{ marginTop: 'var(--space-5)', display: 'flex', gap: 'var(--space-3)' }}>
-        <Link to="/history">History</Link>
-      </nav>
-    </main>
-  );
-}
-
-function HistoryPage() {
-  return (
-    <main className="ds-stub">
-      <h1 style={{ font: 'var(--font-heading)' }}>Session history</h1>
-      <p style={{ color: 'var(--color-text-muted)' }}>Operator-scoped history only (server enforced).</p>
-      <Link to="/">Back home</Link>
-    </main>
-  );
-}
+import SubmitPage from './pages/SubmitPage.jsx';
+import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
+import SessionProvisioningView from './pages/SessionProvisioningView.jsx';
 
 function ErrorPage() {
   return (
@@ -45,13 +26,22 @@ function SessionRoute() {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<SubmitPage />} />
       <Route path="/session/:id" element={<SessionRoute />} />
-      <Route path="/history" element={<HistoryPage />} />
+      <Route path="/session/:id/provisioning" element={<ProvisioningRoute />} />
+      <Route path="/history" element={<SessionHistoryPage />} />
       <Route path="/error" element={<ErrorPage />} />
       <Route path="*" element={<Navigate to="/error" replace />} />
     </Routes>
   );
+}
+
+function ProvisioningRoute() {
+  const { id } = useParams();
+  if (!isUuidSessionId(id)) {
+    return <Navigate to="/error" replace />;
+  }
+  return <SessionProvisioningView sessionId={id} authToken={window.__DASDOCKER_SESSION_JWT || ''} />;
 }
 
 export default function App() {
