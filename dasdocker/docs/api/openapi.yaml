@@ -1,0 +1,635 @@
+openapi: 3.1.0
+info:
+  title: dasDocker API
+  version: 1.0.0
+  description: |
+    Final production OpenAPI specification for dasDocker release v1.0.
+    This is a public developer contract and excludes internal-only monitoring and operator endpoints.
+servers:
+  - url: https://staging.dasdocker.internal/api
+    description: Staging
+  - url: https://api.dasdocker.prod/api
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Sessions
+  - name: Session Proxy
+  - name: Health
+paths:
+  /v1/sessions:
+    post:
+      tags: [Sessions]
+      summary: Create a sandbox session
+      description: |
+        Creates a new session and enqueues lifecycle orchestration.
+        Authentication is mandatory with a Bearer token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+          description: Client-supplied idempotency key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+            examples:
+              github_source:
+                value:
+                  source_type: github
+                  github_url: https://github.com/example/repo
+                  install_commands:
+                    - npm ci
+                    - npm run build
+                  entrypoint: npm run start
+                  running_ttl_seconds: 600
+                  metadata:
+                    project: sample
+      responses:
+        '201':
+          $ref: '#/components/responses/SessionCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      tags: [Sessions]
+      summary: List visible sessions
+      description: |
+        Returns sessions visible to the authenticated principal.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: state
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SessionState'
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionListOk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      summary: Fetch a session
+      description: |
+        Returns the current projection for a single session.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionOk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      tags: [Sessions]
+      summary: Destroy a session
+      description: |
+        Requests teardown for a target session.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: force
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          $ref: '#/components/responses/SessionDestroyAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/sessions/{session_id}/proxy/{proxy_path}:
+    get:
+      tags: [Session Proxy]
+      summary: Proxy a request to the running session app
+      description: |
+        Proxies an HTTP GET request to the app served by a RUNNING session.
+        Requires `session:read` scope and session ownership constraints.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: proxy_path
+          in: path
+          required: true
+          description: URL encoded subpath inside proxied app.
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/ProxyOk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Unauthorized
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: unauthorized
+        '403':
+          description: Forbidden
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: session_scope_mismatch
+        '404':
+          description: Not found
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/XRateLimitLimit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/XRateLimitRemaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: web_view_not_available
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /v1/health:
+    get:
+      tags: [Health]
+      summary: Public API health endpoint
+      description: |
+        Public health endpoint for API consumers.
+        Internal monitoring checks are intentionally undocumented here.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/HealthOk'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer JWT. Do not embed real tokens in requests or examples.
+  headers:
+    XRateLimitLimit:
+      description: Maximum requests allowed in current window.
+      schema:
+        type: integer
+        minimum: 1
+    XRateLimitRemaining:
+      description: Remaining requests in current window.
+      schema:
+        type: integer
+        minimum: 0
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Session identifier.
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        nullable: true
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  schemas:
+    SessionState:
+      type: string
+      enum:
+        - QUEUED
+        - PROVISIONING
+        - INSTALLING_DEPS
+        - RUNNING
+        - DESTROYING
+        - DESTROYED
+        - FAILED
+    SourceType:
+      type: string
+      enum: [github, zip]
+    CreateSessionRequest:
+      type: object
+      required:
+        - source_type
+        - running_ttl_seconds
+      properties:
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        github_url:
+          type: string
+          format: uri
+          pattern: '^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:\\.git)?/?$'
+          nullable: true
+          description: Required when `source_type=github`.
+        zip_upload_id:
+          type: string
+          nullable: true
+          description: Required when `source_type=zip`.
+        install_commands:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 4096
+        entrypoint:
+          type: string
+          maxLength: 4096
+        running_ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 256
+    Session:
+      type: object
+      required:
+        - session_id
+        - state
+        - source_type
+        - created_at
+        - ttl_seconds_remaining
+      properties:
+        session_id:
+          type: string
+        state:
+          $ref: '#/components/schemas/SessionState'
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        container_id:
+          type: string
+          nullable: true
+        worker_id:
+          type: string
+          nullable: true
+        ttl_seconds_remaining:
+          type: integer
+          minimum: 0
+        failure_reason:
+          type: string
+          nullable: true
+    SessionList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        next_cursor:
+          type: string
+          nullable: true
+    HealthStatus:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unhealthy]
+        checks:
+          type: object
+          additionalProperties:
+            type: object
+            required: [status]
+            properties:
+              status:
+                type: string
+                enum: [pass, fail]
+              latency_ms:
+                type: number
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+    ProxyError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+  responses:
+    SessionCreated:
+      description: Session created.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+          example:
+            session_id: s_123
+            state: QUEUED
+            source_type: github
+            created_at: '2026-05-09T08:30:00Z'
+            expires_at: '2026-05-09T08:40:00Z'
+            ttl_seconds_remaining: 600
+    SessionListOk:
+      description: Session list.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SessionList'
+          example:
+            items:
+              - session_id: s_123
+                state: RUNNING
+                source_type: github
+                created_at: '2026-05-09T08:30:00Z'
+                expires_at: '2026-05-09T08:40:00Z'
+                ttl_seconds_remaining: 420
+            next_cursor: null
+    SessionOk:
+      description: Session details.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+          example:
+            session_id: s_123
+            state: RUNNING
+            source_type: github
+            created_at: '2026-05-09T08:30:00Z'
+            expires_at: '2026-05-09T08:40:00Z'
+            ttl_seconds_remaining: 420
+    SessionDestroyAccepted:
+      description: Session destroy accepted.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Session'
+          example:
+            session_id: s_123
+            state: DESTROYING
+            source_type: github
+            created_at: '2026-05-09T08:30:00Z'
+            expires_at: null
+            ttl_seconds_remaining: 0
+    ProxyOk:
+      description: Successful proxied response.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        text/html:
+          schema:
+            type: string
+          example: "<!doctype html><html><body>Session App</body></html>"
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+          example:
+            ok: true
+    HealthOk:
+      description: Service is healthy.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HealthStatus'
+          example:
+            status: ok
+            checks:
+              redis:
+                status: pass
+                latency_ms: 2.1
+              docker:
+                status: pass
+                latency_ms: 8.6
+    BadRequest:
+      description: Invalid request.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Bad Request
+            status: 400
+            code: bad_request
+            detail: Request validation failed.
+    Unauthorized:
+      description: Missing or invalid credentials.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Unauthorized
+            status: 401
+            code: unauthorized
+            detail: Bearer token missing or invalid.
+    Forbidden:
+      description: Authenticated but not permitted.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Forbidden
+            status: 403
+            code: forbidden
+            detail: Action is not permitted for this token scope.
+    NotFound:
+      description: Resource not found.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Not Found
+            status: 404
+            code: not_found
+            detail: Requested resource does not exist.
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Too Many Requests
+            status: 429
+            code: rate_limited
+            detail: Please retry after cooldown.
+    ServiceUnavailable:
+      description: Service currently unavailable.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/XRateLimitLimit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/XRateLimitRemaining'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            title: Service Unavailable
+            status: 503
+            code: service_unavailable
+            detail: A required dependency is unavailable.

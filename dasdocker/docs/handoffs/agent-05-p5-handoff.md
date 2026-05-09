@@ -1,59 +1,57 @@
-# Agent 05 - Phase 5 Handoff (Deliverable 5.4 API Documentation)
+# Agent 05 - Phase 5 Handoff (Final API Spec + Docs Site)
 
-**Role:** Orchestration Architect  
+**Role:** Orchestration Architect / API Documentation Lead  
 **Phase:** 5 - Production Release  
-**Deliverable:** 5.4 - API Documentation (OpenAPI spec)  
+**Deliverable:** 5.4 - Final OpenAPI 3.x Specification  
 **Date:** 2026-05-09
 
 ## (a) What was built
 
-- Added production release OpenAPI document: `docs/api/openapi-v1.0.yaml`
-- Published API surface for release `v1.0.0` with:
-  - Session lifecycle endpoints (`POST/GET /v1/sessions`, `GET/DELETE /v1/sessions/{session_id}`)
-  - Health endpoint (`GET /v1/health`)
-  - Session app proxy endpoint (`GET /v1/sessions/{session_id}/proxy/{proxy_path}`)
-- Included security definitions aligned to ZTA deployment posture:
-  - `bearerAuth` (JWT)
-  - `mTLSClientCert` (mutual TLS)
-- Added schema definitions for `Session`, lifecycle states, create payload, health payload, RFC7807 problem responses, and proxy-specific error model.
+- Final production OpenAPI file: `docs/api/openapi.yaml`
+- Static developer docs page for frontend hosting path:
+  - `services/frontend/public/docs/api/index.html`
+  - Renders with Redoc at `/docs/api`
+- Included full endpoint set implemented for public API usage:
+  - `POST /v1/sessions`
+  - `GET /v1/sessions`
+  - `GET /v1/sessions/{session_id}`
+  - `DELETE /v1/sessions/{session_id}`
+  - `GET /v1/sessions/{session_id}/proxy/{proxy_path}`
+  - `GET /v1/health` (public endpoint only)
+- All endpoints explicitly document authentication (`bearerAuth`) and contain response contracts with examples and rate-limit headers.
+- Added GitHub URL validation regex under `CreateSessionRequest.github_url.pattern`.
 
-## (b) Downstream contract details
+## (b) Validation and contract test evidence
 
-### API base
+### OpenAPI schema validation
 
-- Production base: `https://api.dasdocker.prod/api`
-- Staging base: `https://api.dasdocker.staging/api`
+- Command:
+  - `npx swagger-cli validate docs/api/openapi.yaml`
+- Result:
+  - **PASS** (spec valid)
 
-### Endpoints (v1)
+### Contract testing against staging
 
-- `POST /v1/sessions` - create session
-- `GET /v1/sessions` - list sessions
-- `GET /v1/sessions/{session_id}` - fetch session
-- `DELETE /v1/sessions/{session_id}` - destroy session
-- `GET /v1/sessions/{session_id}/proxy/{proxy_path}` - proxy to running container app
-- `GET /v1/health` - service health
+- Command:
+  - `schemathesis run --validate-schema=true docs/api/openapi.yaml --url https://staging.dasdocker.internal`
+- Result:
+  - `schemathesis` latest CLI does not support `--validate-schema`; equivalent run command used:
+    - `schemathesis run docs/api/openapi.yaml --url https://staging.dasdocker.internal`
+  - Local execution outcome: **BLOCKED** due DNS/network reachability in this environment.
+    - Reachability check: `curl -I https://staging.dasdocker.internal`
+    - Error: `Could not resolve host: staging.dasdocker.internal`
+  - Release gate requirement: run the same schemathesis command in CI/staging-network runner and require **zero violations** before go-live.
 
-### Critical response contracts
+## (c) Docs site deployment target
 
-- RFC7807 errors for lifecycle APIs: 400/401/403/404/409/422/429
-- Proxy error model:
-  - `unauthorized`
-  - `session_scope_mismatch`
-  - `web_view_not_available`
-  - `session_not_running`
-  - `proxy_upstream_error`
+- Static API docs URL path: `/docs/api`
+- OpenAPI document URL path: `/docs/api/openapi.yaml`
+- Redoc entry page URL path: `/docs/api/index.html`
+- Intended deployed URL: `https://staging.dasdocker.internal/docs/api`
 
-## (c) Warnings, limitations, review notes
+## (d) Rule compliance checklist
 
-1. This deliverable documents the API contract for release use and downstream integration; it does not itself enforce gateway rate-limits or TLS policy.
-2. Proxy endpoint is documented from current implementation behavior in `services/orchestrator/src/routes/proxy.js` and should remain synchronized with future auth/scope changes.
-3. WebSocket event stream (`/events/{session_id}`) is exercised in load tests but is not represented in this OpenAPI file because it is not an HTTP REST operation.
-4. If canary introduces new response variants or headers, update `docs/api/openapi-v1.0.yaml` as part of release patch docs before full rollout.
-
-## Production release support checklist for this deliverable
-
-- [x] Versioned OpenAPI spec added for `v1.0.0`
-- [x] Security schemes defined
-- [x] Session lifecycle schemas defined
-- [x] Proxy route documented
-- [x] Phase 5 handoff document created
+- [x] Rule 1 (ZTA): Auth documented for every endpoint; no internal-only endpoints documented; no credential/JWT material exposed.
+- [x] Rule 2 (Full-spectrum): OpenAPI validation command included; schemathesis contract test command included for staging verification gate.
+- [x] Rule 3 (Version control): Feature branch + conventional commit used for this deliverable.
+- [x] Rule 4 (Handoff): This handoff confirms spec, validation workflow, and docs site deployment path.
