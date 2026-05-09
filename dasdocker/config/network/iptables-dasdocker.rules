@@ -22,6 +22,7 @@
 -A DASDOCKER-FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "NR-012 T-S08-001 return path" -j ACCEPT
 -A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 172.31.0.1 -p udp -m udp --dport 53 -m comment --comment "NR-001 T-S08-002 DNS UDP FORWARD belt" -j ACCEPT
 -A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 172.31.0.1 -p tcp -m tcp --dport 53 -m comment --comment "NR-001 T-S08-002 DNS TCP FORWARD belt" -j ACCEPT
+-A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 172.31.0.1 -m comment --comment "NR-019 T-S08-001 deny non-DNS to gateway in FORWARD" -j DROP
 -A DASDOCKER-FORWARD -s 172.31.0.0/16 -m iprange --dst-range 172.31.0.2-172.31.255.255 -m comment --comment "NR-014 T-S08-001 ICC" -j DROP
 -A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 10.0.0.0/8 -m comment --comment "NR-004 T-S08-001 RFC1918-10" -j LOG --log-prefix "DASDOCKER_LAN_BLOCK: "
 -A DASDOCKER-FORWARD -s 172.31.0.0/16 -d 10.0.0.0/8 -j DROP
