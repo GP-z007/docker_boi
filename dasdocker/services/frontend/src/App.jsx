@@ -1,5 +1,6 @@
 import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { isUuidSessionId } from './lib/uuid.js';
+import SessionWorkspace from './pages/SessionWorkspace.jsx';
 
 function LandingPage() {
   return (
@@ -9,17 +10,6 @@ function LandingPage() {
       <nav style={{ marginTop: 'var(--space-5)', display: 'flex', gap: 'var(--space-3)' }}>
         <Link to="/history">History</Link>
       </nav>
-    </main>
-  );
-}
-
-function SessionWorkspace({ sessionId }) {
-  return (
-    <main className="ds-stub">
-      <h1 style={{ font: 'var(--font-heading)' }}>Session workspace</h1>
-      <p data-session={sessionId} style={{ color: 'var(--color-text-muted)' }}>
-        Opaque session: {sessionId?.slice(0, 8)}…
-      </p>
     </main>
   );
 }
