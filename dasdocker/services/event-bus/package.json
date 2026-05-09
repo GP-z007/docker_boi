@@ -1,0 +1,17 @@
+{
+  "name": "@dasdocker/event-bus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Session-scoped WebSocket event bus for observability stream fan-out",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/event-bus/*.js"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.1",
+    "ws": "^8.18.3"
+  }
+}

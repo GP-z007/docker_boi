@@ -1,0 +1,17 @@
+{
+  "rules": [
+    { "rule_id": "ALERT-001", "pattern": "process:(curl|wget)", "severity": "warn", "description": "Potential data exfiltration via HTTP", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-002", "pattern": "process:(nc|ncat)", "severity": "critical", "description": "Potential reverse shell", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-003", "pattern": "process:python3\\s+-c.*base64", "severity": "high", "description": "Potential in-memory payload execution", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-004", "pattern": "network:port:(4444|1337|31337)", "severity": "critical", "description": "Classic C2/reverse shell ports", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-005", "pattern": "process:chmod\\s+\\+x", "severity": "warn", "description": "Potential dropper behaviour", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-006", "pattern": "metric:proc_spawn_rate_gt:20", "severity": "high", "description": "Potential fork bomb or rapid process creation", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-007", "pattern": "network:dns:\\.(onion|i2p)$", "severity": "critical", "description": "Tor/I2P anonymisation network access attempt", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-008", "pattern": "process:(crontab\\s+-e|/etc/cron\\.)", "severity": "high", "description": "Persistence mechanism attempt", "action": "emit_alert_event" },
+
+    { "rule_id": "ALERT-009", "pattern": "process:(setenforce\\s+0|iptables\\s+-F)", "severity": "critical", "description": "Defense evasion by disabling security controls", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-010", "pattern": "process:(useradd|adduser|passwd\\s+)", "severity": "high", "description": "Privilege/account manipulation attempt", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-011", "pattern": "file:(/etc/shadow|/root/\\.ssh/authorized_keys)", "severity": "critical", "description": "Credential access or persistence key write path touched", "action": "emit_alert_event" },
+    { "rule_id": "ALERT-012", "pattern": "network:dst_ip:(169\\.254\\.169\\.254|100\\.100\\.100\\.200)", "severity": "critical", "description": "Cloud metadata service access attempt (credential theft)", "action": "emit_alert_event" }
+  ]
+}
