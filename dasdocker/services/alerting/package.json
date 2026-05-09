@@ -1,0 +1,13 @@
+{
+  "name": "@dasdocker/alerting",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Log redaction and alert rule evaluation for observability pipeline",
+  "main": "src/rule-engine.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test ../../tests/observability/*.js"
+  }
+}
