@@ -1,0 +1,16 @@
+# dasDocker custom IDS rules (host-side Suricata on br-dasd-isolated)
+
+alert dns $HOME_NET any -> any 53 (msg:"DASDOCKER Tor onion DNS query"; dns.query; content:".onion"; nocase; sid:4200001; rev:1;)
+alert dns $HOME_NET any -> any 53 (msg:"DASDOCKER I2P DNS query"; dns.query; content:".i2p"; nocase; sid:4200002; rev:1;)
+
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"DASDOCKER outbound pastebin domain"; http.host; content:"pastebin.com"; nocase; sid:4200003; rev:1;)
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"DASDOCKER outbound hastebin domain"; http.host; content:"hastebin.com"; nocase; sid:4200004; rev:1;)
+
+# Known-bad user agent used in tests to confirm alert wiring path.
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"DASDOCKER known-bad user agent"; http.user_agent; content:"BadBotScanner/1.0"; nocase; sid:4200005; rev:1;)
+
+# Port scan heuristic: >10 unique destination ports from same source over short window.
+alert ip $HOME_NET any -> $EXTERNAL_NET any (msg:"DASDOCKER potential port scan (>10 ports/5s)"; threshold:type both, track by_src, count 10, seconds 5; sid:4200006; rev:1;)
+
+# Tor guard node placeholders (example ranges; replace with maintained feed in ops).
+alert ip $HOME_NET any -> [185.220.100.0/22,171.25.193.0/24] any (msg:"DASDOCKER outbound Tor guard range"; sid:4200007; rev:1;)

@@ -1,0 +1,13 @@
+{
+  "name": "@dasdocker/network-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Host-side pcap capture, Suricata EVE parsing, and Redis publisher",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.1"
+  }
+}

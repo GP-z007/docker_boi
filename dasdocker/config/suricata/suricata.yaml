@@ -1,0 +1,32 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[172.31.0.0/16]"
+    EXTERNAL_NET: "!$HOME_NET"
+
+default-rule-path: /etc/suricata/rules
+rule-files:
+  - suricata.rules
+  - dasdocker.rules
+
+af-packet:
+  - interface: br-dasd-isolated
+    cluster-id: 98
+    cluster-type: cluster_flow
+    defrag: yes
+    copy-mode: ips
+    copy-iface: br-dasd-isolated
+
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: /var/log/suricata/eve.json
+      types:
+        - alert
+        - dns
+        - http
+
+detect:
+  profile: medium
