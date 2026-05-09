@@ -6,6 +6,8 @@
 
 The machine-readable contract is embedded in this file for single-source review with implementation. Validate the YAML in [Swagger Editor](https://editor.swagger.io).
 
+For production release consumption, use the versioned spec at `docs/api/openapi-v1.0.yaml`.
+
 ---
 
 ## Endpoint-level test matrix (Phase 2 obligations)

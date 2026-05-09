@@ -1,0 +1,445 @@
+openapi: 3.1.0
+info:
+  title: dasDocker Orchestrator API
+  version: 1.0.0
+  description: |
+    Production API contract for dasDocker release v1.0.
+    This specification covers the control-plane APIs used to create, inspect,
+    destroy, and proxy sandbox sessions.
+servers:
+  - url: https://api.dasdocker.prod/api
+    description: Production ingress
+  - url: https://api.dasdocker.staging/api
+    description: Staging ingress
+tags:
+  - name: Sessions
+    description: Session lifecycle APIs
+  - name: Session Proxy
+    description: Secure HTTP proxy into running container app endpoints
+  - name: Health
+    description: Service and dependency health APIs
+security:
+  - bearerAuth: []
+  - mTLSClientCert: []
+paths:
+  /v1/sessions:
+    post:
+      tags: [Sessions]
+      summary: Create session
+      operationId: createSession
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created and queued.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    get:
+      tags: [Sessions]
+      summary: List sessions
+      operationId: listSessions
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/SessionState'
+      responses:
+        '200':
+          description: Session list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/sessions/{session_id}:
+    get:
+      tags: [Sessions]
+      summary: Get session
+      operationId: getSession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session projection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+    delete:
+      tags: [Sessions]
+      summary: Destroy session
+      operationId: destroySession
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: force
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '202':
+          description: Destroy accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/sessions/{session_id}/proxy/{proxy_path}:
+    get:
+      tags: [Session Proxy]
+      summary: Proxy GET request to running session app
+      operationId: proxySessionRequest
+      description: |
+        Proxies an HTTP GET request into the session container app endpoint.
+        The caller must have the `session:read` scope and, when present,
+        token `session_id` claim must match the target session.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+        - name: proxy_path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Relative app path to proxy, URL encoded.
+      responses:
+        '200':
+          description: Successful proxy response from session app.
+          content:
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          description: Missing or invalid auth token/scope.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: unauthorized
+        '403':
+          description: Session scope mismatch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: session_scope_mismatch
+        '404':
+          description: Session app endpoint not available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: web_view_not_available
+        '409':
+          description: Session is not running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: session_not_running
+        '502':
+          description: Upstream proxy failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProxyError'
+              example:
+                error: proxy_upstream_error
+
+  /v1/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Service degraded or unhealthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    mTLSClientCert:
+      type: mutualTLS
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+        nullable: true
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  schemas:
+    SessionState:
+      type: string
+      enum:
+        - QUEUED
+        - PROVISIONING
+        - INSTALLING_DEPS
+        - RUNNING
+        - DESTROYING
+        - DESTROYED
+        - FAILED
+    SourceType:
+      type: string
+      enum: [github, zip]
+    CreateSessionRequest:
+      type: object
+      required:
+        - source_type
+        - running_ttl_seconds
+      properties:
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        github_url:
+          type: string
+          format: uri
+          nullable: true
+        zip_upload_id:
+          type: string
+          nullable: true
+        install_commands:
+          type: array
+          items:
+            type: string
+            maxLength: 4096
+          maxItems: 32
+        entrypoint:
+          type: string
+          maxLength: 4096
+        running_ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 256
+    Session:
+      type: object
+      required:
+        - session_id
+        - state
+        - source_type
+        - created_at
+        - ttl_seconds_remaining
+      properties:
+        session_id:
+          type: string
+        state:
+          $ref: '#/components/schemas/SessionState'
+        source_type:
+          $ref: '#/components/schemas/SourceType'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        correlation_id:
+          type: string
+        container_id:
+          type: string
+          nullable: true
+        worker_id:
+          type: string
+          nullable: true
+        ttl_seconds_remaining:
+          type: integer
+          minimum: 0
+        failure_reason:
+          type: string
+          nullable: true
+    SessionList:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        next_cursor:
+          type: string
+          nullable: true
+    HealthStatus:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unhealthy]
+        checks:
+          type: object
+          additionalProperties:
+            type: object
+            required: [status]
+            properties:
+              status:
+                type: string
+                enum: [pass, fail]
+              latency_ms:
+                type: number
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+        instance:
+          type: string
+          format: uri
+    ProxyError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Authenticated but not authorized.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Session not found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Session conflict or invalid transition.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnprocessableEntity:
+      description: Policy validation failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
