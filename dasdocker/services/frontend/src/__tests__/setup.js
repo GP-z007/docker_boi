@@ -15,7 +15,7 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
   });
 }
 
-if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype.getContext) {
+if (typeof HTMLCanvasElement !== 'undefined') {
   HTMLCanvasElement.prototype.getContext = () => ({
     fillRect() {},
     clearRect() {},
@@ -47,5 +47,11 @@ if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype.get
     transform() {},
     rect() {},
     clip() {},
+    createLinearGradient() {
+      return { addColorStop() {} };
+    },
+    createRadialGradient() {
+      return { addColorStop() {} };
+    },
   });
 }
