@@ -16,6 +16,7 @@
  */
 
 const { spawnSync } = require('child_process');
+const fs = require('fs');
 
 const DEFAULT_WORKSPACE_MB = 512;
 const DEFAULT_TMP_MB = 64;
@@ -133,6 +134,24 @@ function verifyStorageDestroyed(sessionId, ctx = {}) {
     return { ok: false, detail: `unexpected volumes: ${volLines.join(',')}` };
   }
 
+  const sessionContainers = spawnSync('docker', ['ps', '-aq', '--filter', `label=dasdocker.session_id=${sid}`], {
+    encoding: 'utf8',
+  });
+  const ids = (sessionContainers.stdout || '').trim().split('\n').filter(Boolean);
+  for (const id of ids) {
+    const byType = spawnSync(
+      'docker',
+      ['inspect', '-f', '{{range .Mounts}}{{println .Type ":" .Source "->" .Destination}}{{end}}', id],
+      { encoding: 'utf8' },
+    );
+    if (byType.status !== 0) continue;
+    const lines = (byType.stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
+    const binds = lines.filter((l) => l.startsWith('bind:'));
+    if (binds.length > 0) {
+      return { ok: false, detail: `bind mounts remain on session-labelled container(s): ${binds.join(', ')}` };
+    }
+  }
+
   emitAudit(
     {
       sessionId: sid,
@@ -142,6 +161,29 @@ function verifyStorageDestroyed(sessionId, ctx = {}) {
   );
 
   return { ok: true, detail: 'teardown verified' };
+}
+
+/**
+ * @param {{
+ *  timestamp: string,
+ *  event: 'container_destroyed',
+ *  session_id: string,
+ *  reason: string,
+ *  storage_verified_clean: boolean,
+ *  container_id: string,
+ * }} payload
+ * @param {string} [auditPath]
+ */
+function appendDestroyAuditLog(payload, auditPath = '/var/log/dasdocker/audit.log') {
+  const line = `${JSON.stringify(payload)}\n`;
+  const dir = auditPath.split('/').slice(0, -1).join('/') || '/var/log/dasdocker';
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(auditPath, line, { encoding: 'utf8' });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, detail: String(e) };
+  }
 }
 
 /**
@@ -178,6 +220,7 @@ function getStorageMetrics(containerId) {
 module.exports = {
   provisionStorage,
   verifyStorageDestroyed,
+  appendDestroyAuditLog,
   getStorageMetrics,
   emitAudit,
   DEFAULT_WORKSPACE_MB,

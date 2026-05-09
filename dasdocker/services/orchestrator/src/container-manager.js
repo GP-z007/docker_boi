@@ -3,7 +3,7 @@
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const { EventEmitter } = require('events');
-const { provisionStorage } = require('./storage-controller');
+const { provisionStorage, verifyStorageDestroyed, appendDestroyAuditLog } = require('./storage-controller');
 const { dockerResourceCliArgs } = require('./resource-enforcer');
 const { ENTRY_BLOCKED } = require('./runtime-detection/command-generator');
 
@@ -369,25 +369,7 @@ async function markRunningWithEntryPolling(provisioned, ctx, didInstallDeps, pol
 }
 
 async function finalizeDestroyAfterEntry(ctx, nameRef, reason) {
-  ctx.stateBus?.emitStateChange({
-    type: 'state_change',
-    session_id: ctx.sessionId,
-    from: 'RUNNING',
-    to: 'DESTROYING',
-    timestamp: new Date().toISOString(),
-    reason,
-  });
-  await ctx.transition(ctx.sessionId, 'DESTROYING', { reason });
-  await dockerRunArgv(['rm', '-f', nameRef]);
-  ctx.stateBus?.emitStateChange({
-    type: 'state_change',
-    session_id: ctx.sessionId,
-    from: 'DESTROYING',
-    to: 'DESTROYED',
-    timestamp: new Date().toISOString(),
-    reason,
-  });
-  await ctx.transition(ctx.sessionId, 'DESTROYED', { reason });
+  await destroyContainer({ sessionId: ctx.sessionId, containerName: nameRef }, reason, ctx);
   ctx.unregister?.();
 }
 
@@ -396,7 +378,7 @@ async function finalizeDestroyAfterEntry(ctx, nameRef, reason) {
  *
  * @param {{ sessionId: string, containerName: string }} target
  * @param {string} reason
- * @param {{ transition?: Function, stateBus?: SessionEventBus }} ctx
+ * @param {{ transition?: Function, stateBus?: SessionEventBus, logSink?: (line: string) => void, auditLogPath?: string, manualReviewTrigger?: Function }} ctx
  */
 async function destroyContainer(target, reason, ctx = {}) {
   ctx.stateBus?.emitStateChange({
@@ -408,7 +390,37 @@ async function destroyContainer(target, reason, ctx = {}) {
     reason,
   });
   if (typeof ctx.transition === 'function') await ctx.transition(target.sessionId, 'DESTROYING', { reason });
-  await dockerRunArgv(['rm', '-f', target.containerName]);
+  const rm = await dockerRunArgv(['rm', '-f', target.containerName]);
+  const storageCheck = verifyStorageDestroyed(target.sessionId);
+  if (!storageCheck.ok) {
+    const critical = `[CRITICAL] storage residue detected for session=${target.sessionId}: ${storageCheck.detail}\n`;
+    if (typeof ctx.logSink === 'function') ctx.logSink(critical);
+    else process.stderr.write(critical);
+    if (typeof ctx.manualReviewTrigger === 'function') {
+      await Promise.resolve(ctx.manualReviewTrigger({ sessionId: target.sessionId, reason, detail: storageCheck.detail }));
+    }
+  }
+  const audit = appendDestroyAuditLog(
+    {
+      timestamp: new Date().toISOString(),
+      event: 'container_destroyed',
+      session_id: target.sessionId,
+      reason,
+      storage_verified_clean: storageCheck.ok,
+      container_id: target.containerName,
+    },
+    ctx.auditLogPath,
+  );
+  if (!audit.ok) {
+    const warn = `[warn] failed to write audit log for session=${target.sessionId}: ${audit.detail}\n`;
+    if (typeof ctx.logSink === 'function') ctx.logSink(warn);
+    else process.stderr.write(warn);
+  }
+  if (rm.code !== 0) {
+    const err = `DOCKER_RM_FAILED: ${rm.stderr || rm.stdout}`;
+    if (typeof ctx.transition === 'function') await ctx.transition(target.sessionId, 'FAILED', { reason: err });
+    throw new Error(err);
+  }
   ctx.stateBus?.emitStateChange({
     type: 'state_change',
     session_id: target.sessionId,
