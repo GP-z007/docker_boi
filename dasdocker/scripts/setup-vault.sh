@@ -71,6 +71,8 @@ bootstrap_engines() {
 
   export VAULT_ADDR="${VAULT_ADDR:-https://127.0.0.1:8200}"
   export VAULT_SKIP_VERIFY="${VAULT_SKIP_VERIFY:-false}"
+  local key_rotate_period="${VAULT_JWT_KEY_ROTATE_PERIOD:-2160h}" # 90 days default
+  local audit_file="${VAULT_AUDIT_FILE:-${VAULT_ROOT}/logs/audit.log}"
   if [[ "${VAULT_SKIP_VERIFY:-false}" == "true" ]]; then
     export VAULT_CLIENT_TIMEOUT=120s
   fi
@@ -80,6 +82,7 @@ bootstrap_engines() {
 
   echo ">>> Enabling secret engines..."
   vault secrets enable -path=dasdocker kv-v2 2>/dev/null || echo "dasdocker KV already enabled"
+  vault secrets tune -max-lease-ttl=24h dasdocker >/dev/null
   vault secrets enable transit 2>/dev/null || echo "transit already enabled"
   vault secrets enable pki 2>/dev/null || echo "pki already enabled"
 
@@ -93,8 +96,16 @@ bootstrap_engines() {
 
   vault write pki/roles/orchestrator allowed_domains="svc.dasdocker.local" allow_subdomains=true max_ttl="720h" >/dev/null
 
+  echo ">>> Enabling Vault file audit log..."
+  mkdir -p "$(dirname "${audit_file}")"
+  touch "${audit_file}"
+  chmod 0600 "${audit_file}"
+  vault audit enable file "file_path=${audit_file}" mode=0600 >/dev/null 2>&1 || echo "audit file device already enabled"
+
   echo ">>> Transit keys..."
-  vault write -f transit/keys/jwt-rs256 type="rsa-2048" >/dev/null 2>&1 || vault write transit/keys/jwt-rs256 type="rsa-2048"
+  vault write transit/keys/jwt-rs256 type="rsa-2048" auto_rotate_period="${key_rotate_period}" >/dev/null 2>&1 \
+    || echo "jwt-rs256 already exists"
+  vault write transit/keys/jwt-rs256/config auto_rotate_period="${key_rotate_period}" >/dev/null
 
   vault write transit/keys/dasdocker-logs type=aes256-gcm96 derived=true >/dev/null 2>&1 \
     || vault write transit/keys/dasdocker-logs type=aes256-gcm96 derived=true
