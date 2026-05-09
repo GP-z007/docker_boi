@@ -32,24 +32,57 @@ function createEventBusServer(cfg) {
     }
     const sessionId = m[1];
     const token = tokenFromReq(req);
-    if (!token) {
-      socket.destroy();
-      return;
-    }
-    const v = validateJwtForSession({
-      token,
-      sessionIdFromPath: sessionId,
-      publicKeyPem: cfg.publicKeyPem,
-      expectedAudience: cfg.expectedAudience || 'obs:subscribe',
-    });
+    const immediate = token
+      ? validateJwtForSession({
+          token,
+          sessionIdFromPath: sessionId,
+          publicKeyPem: cfg.publicKeyPem,
+          expectedAudience: cfg.expectedAudience || 'obs:subscribe',
+        })
+      : null;
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      if (!v.ok) {
-        ws.close(v.code, v.reason);
+      if (immediate) {
+        if (!immediate.ok) {
+          ws.close(immediate.code, immediate.reason);
+          return;
+        }
+        hub.addConnection(sessionId, ws);
+        ws.on('close', () => hub.removeConnection(sessionId, ws));
         return;
       }
-      hub.addConnection(sessionId, ws);
-      ws.on('close', () => hub.removeConnection(sessionId, ws));
+
+      const authTimer = setTimeout(() => ws.close(4001, 'auth_timeout'), 3000);
+      ws.once('message', (msg) => {
+        clearTimeout(authTimer);
+        let first;
+        try {
+          first = JSON.parse(String(msg || ''));
+        } catch {
+          ws.close(4001, 'auth_invalid_payload');
+          return;
+        }
+        if (first.type !== 'auth' || typeof first.token !== 'string') {
+          ws.close(4001, 'auth_required');
+          return;
+        }
+        const v = validateJwtForSession({
+          token: first.token,
+          sessionIdFromPath: sessionId,
+          publicKeyPem: cfg.publicKeyPem,
+          expectedAudience: cfg.expectedAudience || 'obs:subscribe',
+        });
+        if (!v.ok) {
+          ws.close(v.code, v.reason);
+          return;
+        }
+        if (first.session_id && first.session_id !== sessionId) {
+          ws.close(4003, 'session_claim_mismatch');
+          return;
+        }
+        hub.addConnection(sessionId, ws);
+        ws.on('close', () => hub.removeConnection(sessionId, ws));
+      });
     });
   });
 
