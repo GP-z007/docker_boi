@@ -4,6 +4,7 @@ import SessionWorkspace from './pages/SessionWorkspace.jsx';
 import SubmitPage from './pages/SubmitPage.jsx';
 import SessionHistoryPage from './pages/SessionHistoryPage.jsx';
 import SessionProvisioningView from './pages/SessionProvisioningView.jsx';
+import SecurityNotice from './components/SecurityNotice/SecurityNotice.jsx';
 
 function ErrorPage() {
   return (
@@ -61,6 +62,7 @@ export default function App() {
         </Link>
         <Link to="/history">History</Link>
       </header>
+      <SecurityNotice />
       <AppRoutes />
     </div>
   );

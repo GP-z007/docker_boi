@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import TooltipHint from '../Tooltip/TooltipHint.jsx';
 
 function fmt(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -44,9 +45,20 @@ export default function SessionControlPanel({ sessionId, authToken, expiresAt, s
         Status: <strong>{status || 'UNKNOWN'}</strong>
       </span>
       <span style={{ color: danger ? '#F14B4B' : 'var(--color-text-primary)' }}>TTL: {fmt(remainMs)}</span>
-      <button type="button" onClick={onKill} disabled={busy} style={{ background: '#F14B4B', color: '#fff', border: 0, padding: '8px 10px' }}>
+      <button
+        type="button"
+        aria-describedby="kill-session-help"
+        title="Immediately destroys this container and its writable data."
+        onClick={onKill}
+        disabled={busy}
+        style={{ background: '#F14B4B', color: '#fff', border: 0, padding: '8px 10px' }}
+      >
         🔴 KILL SESSION
       </button>
+      <TooltipHint
+        id="kill-session-help"
+        text="Kill Session triggers immediate teardown. Container filesystem writes, process state, and runtime artifacts are destroyed."
+      />
     </section>
   );
 }

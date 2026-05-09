@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SessionWebSocketClient } from '../../lib/websocket-client.js';
+import TooltipHint from '../Tooltip/TooltipHint.jsx';
 
 function makeClient({ wsUrl, sessionId, authToken, authMode }) {
   return new SessionWebSocketClient({ wsUrl, sessionId, authToken, authMode });
@@ -11,6 +12,14 @@ function sevStyle(sev) {
   if (s === 'high') return { bg: '#F97316', pulse: false };
   if (s === 'warn' || s === 'warning') return { bg: '#F5A524', pulse: false };
   return { bg: '#6B7280', pulse: false };
+}
+
+function severityHelpText(sev) {
+  const s = String(sev || '').toLowerCase();
+  if (s === 'critical') return 'Critical indicates active high-risk behavior requiring immediate investigation.';
+  if (s === 'high') return 'High indicates likely malicious or policy-violating behavior.';
+  if (s === 'warn' || s === 'warning') return 'Warning indicates suspicious behavior that should be reviewed.';
+  return 'Info indicates low-risk telemetry context.';
 }
 
 function notifyCritical(alert) {
@@ -73,8 +82,9 @@ export default function AlertFeedPanel({
   }, [client, enableAudio]);
 
   return (
-    <section aria-label="Alert feed panel">
+    <section aria-label="Alert feed panel" aria-describedby="alert-feed-help" title="Shows IDS and policy alerts for this session.">
       <h3>IDS Alerts</h3>
+      <TooltipHint id="alert-feed-help" text="Alert Feed shows intrusion detection and policy alerts emitted for this session." />
       {alerts.length === 0 ? <p style={{ color: 'var(--color-text-muted)' }}>No alerts yet.</p> : null}
       <div style={{ display: 'grid', gap: 8 }}>
         {alerts.map((a, idx) => {
@@ -83,6 +93,8 @@ export default function AlertFeedPanel({
             <article key={`${a.timestamp || idx}-${idx}`} style={{ border: '1px solid var(--color-border-subtle)', padding: 8 }}>
               <span
                 data-testid={`severity-${String(a.severity || '').toUpperCase()}`}
+                aria-describedby={`severity-help-${idx}`}
+                title={severityHelpText(a.severity)}
                 style={{
                   background: st.bg,
                   color: '#fff',
@@ -93,6 +105,7 @@ export default function AlertFeedPanel({
               >
                 {String(a.severity || 'info').toUpperCase()}
               </span>{' '}
+              <TooltipHint id={`severity-help-${idx}`} text={severityHelpText(a.severity)} />
               <strong>{a.rule_id}</strong> - {a.description}
               <div style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>
                 {new Date(a.timestamp || Date.now()).toLocaleTimeString()}

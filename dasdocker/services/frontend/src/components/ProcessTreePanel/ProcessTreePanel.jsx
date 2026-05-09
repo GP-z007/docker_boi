@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SessionWebSocketClient } from '../../lib/websocket-client.js';
+import TooltipHint from '../Tooltip/TooltipHint.jsx';
 
 function makeClient({ wsUrl, sessionId, authToken, authMode }) {
   return new SessionWebSocketClient({ wsUrl, sessionId, authToken, authMode });
@@ -123,8 +124,16 @@ export default function ProcessTreePanel({ sessionId, wsUrl, authToken, authMode
     });
 
   return (
-    <section aria-label="Process tree panel">
+    <section
+      aria-label="Process tree panel"
+      aria-describedby="process-tree-help"
+      title="Shows process creation hierarchy and suspicious flagged commands."
+    >
       <h3>Process Tree</h3>
+      <TooltipHint
+        id="process-tree-help"
+        text="Process Tree displays parent-child process lineage from runtime telemetry and marks nodes flagged by IDS alerts."
+      />
       {roots.length === 0 ? (
         <p style={{ color: 'var(--color-text-muted)' }}>No process telemetry yet.</p>
       ) : (

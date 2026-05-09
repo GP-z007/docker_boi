@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Terminal } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SessionWebSocketClient } from '../../lib/websocket-client.js';
+import TooltipHint from '../Tooltip/TooltipHint.jsx';
 import 'xterm/css/xterm.css';
 import './ConsolePanel.css';
 
@@ -121,11 +122,20 @@ export default function ConsolePanel({ sessionId, wsUrl, authToken, authMode = '
   }, [authToken, client, sessionId, wsUrl]);
 
   return (
-    <section className="console-panel" aria-label="Sandbox console">
+    <section
+      className="console-panel"
+      aria-label="Sandbox console"
+      aria-describedby="console-panel-help"
+      title="Shows live stdout/stderr and session state transitions."
+    >
       <header className="console-panel__header">
         <strong>Live Console</strong>
         <span className="console-panel__status">{status}</span>
       </header>
+      <TooltipHint
+        id="console-panel-help"
+        text="Live console streams stdout and stderr lines plus state changes from the running sandbox."
+      />
       <div className="console-panel__body">
         {wsUrl ? (
           <div className="console-panel__terminal" ref={mountRef} />

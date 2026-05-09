@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SessionWebSocketClient } from '../../lib/websocket-client.js';
+import TooltipHint from '../Tooltip/TooltipHint.jsx';
 
 function mkClient({ wsUrl, sessionId, authToken, authMode }) {
   return new SessionWebSocketClient({ wsUrl, sessionId, authToken, authMode });
@@ -44,8 +45,16 @@ export default function NetworkTimelinePanel({ sessionId, wsUrl, authToken, auth
   }, [client]);
 
   return (
-    <section aria-label="Network timeline panel">
+    <section
+      aria-label="Network timeline panel"
+      aria-describedby="network-timeline-help"
+      title="Shows DNS and outbound connection telemetry emitted by eBPF/network monitors."
+    >
       <h3>Network Timeline</h3>
+      <TooltipHint
+        id="network-timeline-help"
+        text="Network Timeline lists network events (for example DNS queries and HTTP requests) observed for this session."
+      />
       <p>Total connections: {total}</p>
       <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--color-border-subtle)' }}>
         {events.map((evt, idx) => (

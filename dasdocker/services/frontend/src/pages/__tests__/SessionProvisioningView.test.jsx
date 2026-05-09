@@ -16,6 +16,6 @@ describe('SessionProvisioningView', () => {
     );
     expect(screen.getByText(/INSTALLING_DEPS/i)).toBeInTheDocument();
     expect(screen.getByText(/Installing dependencies/i)).toBeInTheDocument();
-    expect(screen.getByText(/Live Console/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Live Console$/i)).toBeInTheDocument();
   });
 });

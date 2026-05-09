@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import TooltipHint from '../components/Tooltip/TooltipHint.jsx';
 
 const GITHUB_URL_REGEX = /^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+(\.git)?$/;
 const MAX_ZIP_BYTES = 256 * 1024 * 1024;
@@ -97,13 +98,23 @@ export default function SubmitPage() {
 
         <label>
           TTL
-          <select aria-label="TTL Selector" value={ttlSeconds} onChange={(e) => setTtlSeconds(e.target.value)}>
+          <select
+            aria-label="TTL Selector"
+            aria-describedby="ttl-selector-help"
+            title="Time-to-live before forced session self-destruct."
+            value={ttlSeconds}
+            onChange={(e) => setTtlSeconds(e.target.value)}
+          >
             <option value="60">60s</option>
             <option value="300">300s</option>
             <option value="600">600s</option>
             <option value="1800">1800s</option>
             <option value="3600">3600s</option>
           </select>
+          <TooltipHint
+            id="ttl-selector-help"
+            text="TTL means maximum runtime for this sandbox session. When TTL expires, dasDocker forces container destruction."
+          />
         </label>
 
         {err ? <p style={{ color: '#F14B4B' }}>{err}</p> : null}
